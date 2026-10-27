@@ -81,7 +81,8 @@ app.get("/api/topics", (_req, res) => {
 });
 
 app.get("/api/topics/:id", (req, res) => {
-  const thread = getThread(req.params.id);
+  // Full text of earlier proposal versions, for the dashboard's diffs.
+  const thread = getThread(req.params.id, { includeHistoryContent: true });
   if (!thread) {
     res.status(404).json({ error: "Topic not found" });
     return;

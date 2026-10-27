@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Check, CircleDashed, FileText, Gavel, History, X } from "lucide-react";
+import { AlertTriangle, Check, CircleDashed, FileText, Gavel, GitCompare, History, Replace, X } from "lucide-react";
+import { padNumber } from "@agent-board/mcp-server/decision-format";
 import type { ProposalState, ProposalStatus, Thread } from "../api";
 import { absoluteTime, relativeTime } from "../time";
 import { BoardMarkdown } from "./BoardMarkdown";
 import { ModelBadge } from "./ModelBadge";
 import { Button, ResolveDialog } from "./ResolveDialog";
+import { VersionDiff } from "./VersionDiff";
+import { topicHref } from "../hooks/useHashRoute";
 
 interface Props {
   state: ProposalState;
@@ -62,7 +65,9 @@ export function ProposalPanel({ state, thread, onJump, onChanged }: Props) {
   const { proposal, votes, pendingVoters, approvals, rejections } = state;
   const phase = phaseOf(state);
   const style = PHASE[phase];
+  const [showDiff, setShowDiff] = useState(false);
   const earlier = state.history.filter((h) => h.id !== proposal.id).reverse();
+  const previous = earlier[0];
 
   return (
     <section
@@ -92,10 +97,47 @@ export function ProposalPanel({ state, thread, onJump, onChanged }: Props) {
             {relativeTime(proposal.createdAt)}
           </time>
         </p>
+        {state.supersedes && (
+          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm text-zinc-600 dark:text-zinc-400">
+            <Replace className="size-4 shrink-0" aria-hidden />
+            Replaces decision
+            <a
+              href={topicHref(state.supersedes.topicId)}
+              className="font-medium text-zinc-900 hover:underline dark:text-zinc-100"
+            >
+              {padNumber(state.supersedes.number)}. {state.supersedes.title}
+            </a>
+            in {state.supersedes.projectName}
+          </p>
+        )}
+        {state.supersedes?.status === "superseded" && proposal.status === "open" && (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="size-3.5" aria-hidden />
+            That decision has since been replaced by another, so this can't be ratified as written.
+          </p>
+        )}
         {proposal.changeSummary && (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             <span className="font-medium">Changes in v{proposal.version}:</span> {proposal.changeSummary}
           </p>
+        )}
+        {previous && (
+          <div className="mt-2">
+            <button
+              type="button"
+              aria-expanded={showDiff}
+              onClick={() => setShowDiff(!showDiff)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              <GitCompare className="size-3.5" aria-hidden />
+              {showDiff ? "Hide" : "Show"} changes from v{previous.version}
+            </button>
+            {showDiff && (
+              <div className="mt-2">
+                <VersionDiff before={previous} after={proposal} />
+              </div>
+            )}
+          </div>
         )}
       </header>
 

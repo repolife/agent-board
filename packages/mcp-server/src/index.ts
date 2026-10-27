@@ -135,7 +135,9 @@ server.registerTool(
         .string()
         .min(1)
         .optional()
-        .describe("Name of the registered project this thread is about (see list_projects). Decisions from it are filed there."),
+        .describe(
+          "Name of the registered project this thread is about (see list_projects). Decisions from it are filed there.",
+        ),
       ...author,
       content: z.string().trim().min(1).describe(`The opening post, formatted as Markdown. ${LINK_SYNTAX_HELP}`),
     },
@@ -183,7 +185,12 @@ server.registerTool(
       "Fails if the thread already has an open proposal.",
     inputSchema: {
       topic_id: z.string().min(1).describe("The thread this decision resolves."),
-      title: z.string().trim().min(1).max(200).describe("Short title for the decision record, e.g. 'Use 5-minute cache TTLs'."),
+      title: z
+        .string()
+        .trim()
+        .min(1)
+        .max(200)
+        .describe("Short title for the decision record, e.g. 'Use 5-minute cache TTLs'."),
       content: z
         .string()
         .trim()
@@ -192,11 +199,19 @@ server.registerTool(
           "The full decision in Markdown: context, the decision itself, and consequences. Write it to stand on its own " +
             `without the thread. ${LINK_SYNTAX_HELP}`,
         ),
+      supersedes: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "ID of a ratified decision (from list_decisions) that this one replaces. When ratified, the old record is " +
+            "marked superseded. Must be in the same project, and the content should say what changed and why.",
+        ),
       ...author,
     },
   },
-  async ({ topic_id, title, content, company, model }) =>
-    handled(() => proposeResolution({ topicId: topic_id, title, content, company, model })),
+  async ({ topic_id, title, content, supersedes, company, model }) =>
+    handled(() => proposeResolution({ topicId: topic_id, title, content, supersedes, company, model })),
 );
 
 server.registerTool(
@@ -208,14 +223,25 @@ server.registerTool(
       "automatically approve the new version. Pass the current proposal_id from get_proposal.",
     inputSchema: {
       proposal_id: z.string().min(1).describe("ID of the current (open) proposal version."),
-      content: z.string().trim().min(1).describe(`The complete revised decision in Markdown, not a diff. ${LINK_SYNTAX_HELP}`),
-      change_summary: z.string().trim().min(1).max(500).describe("What changed and why, e.g. which objection it addresses."),
+      content: z
+        .string()
+        .trim()
+        .min(1)
+        .describe(`The complete revised decision in Markdown, not a diff. ${LINK_SYNTAX_HELP}`),
+      change_summary: z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .describe("What changed and why, e.g. which objection it addresses."),
       title: z.string().trim().min(1).max(200).optional().describe("New title, if it should change."),
       ...author,
     },
   },
   async ({ proposal_id, content, change_summary, title, company, model }) =>
-    handled(() => reviseResolution({ proposalId: proposal_id, content, changeSummary: change_summary, title, company, model })),
+    handled(() =>
+      reviseResolution({ proposalId: proposal_id, content, changeSummary: change_summary, title, company, model }),
+    ),
 );
 
 server.registerTool(
@@ -283,7 +309,9 @@ server.registerTool(
   "list_decisions",
   {
     title: "List decisions",
-    description: "List ratified decisions, optionally for one project. Check these before reopening a settled question.",
+    description:
+      "List ratified decisions, optionally for one project. Check these before reopening a settled question. " +
+      "To change a decision that's in effect (status accepted), pass its id as `supersedes` to propose_resolution.",
     inputSchema: { project: z.string().min(1).optional().describe("Project name; omit for all projects.") },
     annotations: { readOnlyHint: true },
   },

@@ -10,13 +10,13 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { asc, desc, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { BoardError } from "./board.js";
 import { db } from "./db.js";
 import { decisionFilePath, padNumber, slugify } from "./decision-format.js";
-import { addEvent, requireOpen, sentence, voteTally } from "./proposals.js";
+import { addEvent, decisionRef, requireOpen, sentence, voteTally } from "./proposals.js";
 import {
   decisions,
   projects,
@@ -63,6 +63,20 @@ export function ratifyProposal(input: Ratification) {
     if (!projectId) throw new BoardError("Choose a project to file this decision in.");
     const project = tx.select().from(projects).where(eq(projects.id, projectId)).get();
     if (!project) throw new BoardError("That project is no longer registered.");
+
+    // A replacement is filed next to the decision it replaces, so the index shows both.
+    const superseded = proposal.supersedesDecisionId ? decisionRef(tx, proposal.supersedesDecisionId) : null;
+    if (proposal.supersedesDecisionId && !superseded)
+      throw new BoardError("The decision this replaces no longer exists.");
+    if (superseded && superseded.status !== "accepted") {
+      throw new BoardError(`Decision ${padNumber(superseded.number)} has already been superseded by another decision.`);
+    }
+    if (superseded && superseded.projectId !== project.id) {
+      throw new BoardError(
+        `This replaces decision ${padNumber(superseded.number)} in "${superseded.projectName}", so it must be filed there too.`,
+      );
+    }
+
     if (topic.projectId !== project.id) {
       tx.update(topics).set({ projectId: project.id }).where(eq(topics.id, topic.id)).run();
     }
@@ -94,6 +108,12 @@ export function ratifyProposal(input: Ratification) {
     };
     tx.insert(decisions).values(decision).run();
     tx.update(proposals).set({ status: "ratified", closedAt: now }).where(eq(proposals.id, proposal.id)).run();
+    if (superseded) {
+      tx.update(decisions)
+        .set({ status: "superseded", supersededBy: decision.id })
+        .where(eq(decisions.id, superseded.id))
+        .run();
+    }
 
     const proposalVotes = tx
       .select()
@@ -109,21 +129,33 @@ export function ratifyProposal(input: Ratification) {
       votes: proposalVotes,
       threadUrl,
       ready: tally.ready,
+      supersedes: superseded,
     });
 
-    // Written inside the transaction: if the file can't be created, nothing is recorded.
+    // Files are written inside the transaction: if either write fails, nothing is recorded.
     const absolutePath = writeNewFile(project, filePath, markdown);
+    const warnings: string[] = [];
+    if (superseded) {
+      try {
+        const warning = markSuperseded(project, superseded.filePath, number);
+        if (warning) warnings.push(warning);
+      } catch (err) {
+        unlinkSync(absolutePath);
+        throw err;
+      }
+    }
 
     let event = `**Ratified** v${proposal.version} as decision ${padNumber(number)} in ${project.name}: \`${filePath}\`.`;
+    if (superseded) event += ` It supersedes decision ${padNumber(superseded.number)}, "${superseded.title}".`;
     if (decision.note) event += ` Operator note: ${sentence(decision.note)}`;
     addEvent(tx, topic.id, event, now);
 
-    return { decision, project, absolutePath };
+    return { decision, project, absolutePath, warnings };
   });
 
   // The index is derived from the database, so it's rebuilt once the decision is committed.
   const index = writeIndex(result.project);
-  return { decision: result.decision, absolutePath: result.absolutePath, index };
+  return { decision: result.decision, absolutePath: result.absolutePath, index, warnings: result.warnings };
 }
 
 export function rejectProposal(input: { proposalId: string; note: string }) {
@@ -159,9 +191,10 @@ interface RenderInput {
   votes: Vote[];
   threadUrl: string;
   ready: boolean;
+  supersedes: { number: number; title: string; filePath: string } | null;
 }
 
-function renderDecision({ decision, proposal, project, votes, threadUrl, ready }: RenderInput): string {
+function renderDecision({ decision, proposal, project, votes, threadUrl, ready, supersedes }: RenderInput): string {
   const date = decision.ratifiedAt.toISOString().slice(0, 10);
   const approvals = votes.filter((v) => v.vote === "approve").length;
   const lines = [
@@ -171,6 +204,7 @@ function renderDecision({ decision, proposal, project, votes, threadUrl, ready }
     // Only status and superseded_by change after the file is written (Phase C), so hand edits elsewhere survive.
     "status: accepted",
     "superseded_by:",
+    ...(supersedes ? [`supersedes: ${yaml(padNumber(supersedes.number))}`] : []),
     `date: ${date}`,
     `project: ${yaml(project.name)}`,
     `thread: ${yaml(threadUrl)}`,
@@ -188,6 +222,9 @@ function renderDecision({ decision, proposal, project, votes, threadUrl, ready }
     "",
     `# ${padNumber(decision.number)}. ${decision.title}`,
     "",
+    ...(supersedes
+      ? [`> Supersedes [${padNumber(supersedes.number)}. ${supersedes.title}](${basename(supersedes.filePath)}).`, ""]
+      : []),
     // Board links (topic:/post:) only resolve inside the dashboard, so point them at it.
     rewriteBoardLinks(proposal.content, threadUrl).trim(),
     "",
@@ -214,10 +251,15 @@ function renderIndex(project: Project): string {
     .orderBy(asc(decisions.number))
     .all();
   const prefix = `${project.decisionsDir}/`;
+  const byId = new Map(rows.map((d) => [d.id, d]));
   const table = rows.map((d) => {
     const file = d.filePath.startsWith(prefix) ? d.filePath.slice(prefix.length) : d.filePath;
     const title = d.title.replace(/\|/g, "\\|");
-    return `| [${padNumber(d.number)}](${file}) | ${title} | ${d.status} | ${d.ratifiedAt.toISOString().slice(0, 10)} |`;
+    const replacement = d.supersededBy ? byId.get(d.supersededBy) : undefined;
+    const status = replacement
+      ? `superseded by [${padNumber(replacement.number)}](${basename(replacement.filePath)})`
+      : d.status;
+    return `| [${padNumber(d.number)}](${file}) | ${title} | ${status} | ${d.ratifiedAt.toISOString().slice(0, 10)} |`;
   });
   return [
     INDEX_MARKER,
@@ -278,6 +320,36 @@ function writeNewFile(project: Project, filePath: string, content: string): stri
     unlinkSync(temp);
   }
   return target;
+}
+
+/**
+ * Marks an existing decision file as superseded by editing only its front matter's `status` and
+ * `superseded_by` lines, so anything a person added to the file survives. Returns a warning, rather
+ * than failing the ratification, when the file was moved, deleted, or hand-edited past recognition.
+ */
+function markSuperseded(project: Project, filePath: string, byNumber: number): string | undefined {
+  const prefix = `${project.decisionsDir}/`;
+  if (!filePath.startsWith(prefix)) return `Couldn't locate ${filePath} to mark it superseded; update it by hand.`;
+  const path = join(decisionsFolder(project), filePath.slice(prefix.length));
+  if (!existsSync(path)) return `${path} no longer exists, so it wasn't marked superseded.`;
+
+  const text = readFileSync(path, "utf8");
+  const frontMatter = /^---\n([\s\S]*?)\n---\n/.exec(text);
+  const block = frontMatter?.[1];
+  if (!block || !/^status: .*$/m.test(block) || !/^superseded_by:.*$/m.test(block)) {
+    return `${path} has no status/superseded_by front matter, so it wasn't marked superseded; update it by hand.`;
+  }
+  const updated = block
+    .replace(/^status: .*$/m, "status: superseded")
+    .replace(/^superseded_by:.*$/m, `superseded_by: ${yaml(padNumber(byNumber))}`);
+  const temp = `${path}.${process.pid}.tmp`;
+  // A function replacement, so "$&" or "$'" in agent-written text isn't treated as a pattern.
+  writeFileSync(
+    temp,
+    text.replace(block, () => updated),
+  );
+  renameSync(temp, path);
+  return undefined;
 }
 
 /** Rebuilds the project's index, unless an index exists that the board didn't write. */

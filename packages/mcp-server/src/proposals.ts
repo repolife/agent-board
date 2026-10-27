@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { assertRefsExist, BoardError, voterKey } from "./board.js";
+import { padNumber } from "./decision-format.js";
 import { db } from "./db.js";
 import { decisions, posts, projects, proposals, topics, votes, type Post, type Proposal } from "./schema.js";
 
@@ -95,6 +96,29 @@ export interface NewProposal {
   content: string;
   company: string;
   model: string;
+  /** ID of a ratified decision this proposal would replace. */
+  supersedes?: string;
+}
+
+/** A decision as other records refer to it: enough to name it and find its file. */
+export function decisionRef(tx: Tx | typeof db, decisionId: string) {
+  return (
+    tx
+      .select({
+        id: decisions.id,
+        number: decisions.number,
+        title: decisions.title,
+        status: decisions.status,
+        filePath: decisions.filePath,
+        topicId: decisions.topicId,
+        projectId: decisions.projectId,
+        projectName: projects.name,
+      })
+      .from(decisions)
+      .innerJoin(projects, eq(projects.id, decisions.projectId))
+      .where(eq(decisions.id, decisionId))
+      .get() ?? null
+  );
 }
 
 export function proposeResolution(input: NewProposal) {
@@ -115,6 +139,24 @@ export function proposeResolution(input: NewProposal) {
       );
     }
 
+    if (input.supersedes) {
+      const old = decisionRef(tx, input.supersedes);
+      if (!old) throw new BoardError(`No decision with id "${input.supersedes}". Call list_decisions to see IDs.`);
+      if (old.status !== "accepted") {
+        throw new BoardError(
+          `Decision ${padNumber(old.number)} "${old.title}" is already superseded; supersede its replacement instead.`,
+        );
+      }
+      if (topic.projectId && topic.projectId !== old.projectId) {
+        throw new BoardError(
+          `Decision ${padNumber(old.number)} belongs to project "${old.projectName}", but this thread is filed under a different project. ` +
+            "A decision can only be superseded within its own project.",
+        );
+      }
+      // A thread without a project inherits the superseded decision's, where the new record will be filed.
+      if (!topic.projectId) tx.update(topics).set({ projectId: old.projectId }).where(eq(topics.id, topic.id)).run();
+    }
+
     const now = new Date();
     const proposal: Proposal = {
       id: uuid(),
@@ -125,7 +167,7 @@ export function proposeResolution(input: NewProposal) {
       changeSummary: null,
       proposedByCompany: input.company,
       proposedByModel: input.model,
-      supersedesDecisionId: null,
+      supersedesDecisionId: input.supersedes ?? null,
       status: "open",
       humanNote: null,
       createdAt: now,
@@ -236,7 +278,7 @@ export function castVote(input: NewVote) {
  * Everything about a thread's latest proposal: the current text, every vote with its rationale,
  * who hasn't voted yet, readiness, and the version history. Null if the thread has none.
  */
-export function getProposalState(topicId: string) {
+export function getProposalState(topicId: string, options: { includeHistoryContent?: boolean } = {}) {
   const history = db
     .select()
     .from(proposals)
@@ -297,11 +339,14 @@ export function getProposalState(topicId: string) {
     ...voteTally(db, current.id),
     readyRule: `At least ${READY_MIN_APPROVALS} approvals and no rejections, then a human ratifies.`,
     decision,
+    supersedes: current.supersedesDecisionId ? decisionRef(db, current.supersedesDecisionId) : null,
+    // Earlier versions' full text is only needed for diffs in the dashboard; agents get summaries.
     history: history.map(
-      ({ id, version, title, status, changeSummary, proposedByCompany, proposedByModel, createdAt }) => ({
+      ({ id, version, title, content, status, changeSummary, proposedByCompany, proposedByModel, createdAt }) => ({
         id,
         version,
         title,
+        ...(options.includeHistoryContent ? { content } : {}),
         status,
         changeSummary,
         proposedByCompany,
@@ -343,7 +388,7 @@ export function openProposalStatus(): Map<string, { version: number; status: "vo
 }
 
 export function listDecisions(projectId?: string) {
-  return db
+  const rows = db
     .select({
       id: decisions.id,
       number: decisions.number,
@@ -354,10 +399,19 @@ export function listDecisions(projectId?: string) {
       projectName: projects.name,
       ratifiedAt: decisions.ratifiedAt,
       supersededBy: decisions.supersededBy,
+      supersedes: proposals.supersedesDecisionId,
     })
     .from(decisions)
     .innerJoin(projects, eq(projects.id, decisions.projectId))
+    .innerJoin(proposals, eq(proposals.id, decisions.proposalId))
     .where(projectId ? eq(decisions.projectId, projectId) : undefined)
     .orderBy(projects.name, asc(decisions.number))
     .all();
+  // Numbers, not just IDs, so agents and people can say "0003 was superseded by 0007".
+  const numberOf = new Map(rows.map((d) => [d.id, d.number]));
+  return rows.map((d) => ({
+    ...d,
+    supersededByNumber: d.supersededBy ? (numberOf.get(d.supersededBy) ?? null) : null,
+    supersedesNumber: d.supersedes ? (numberOf.get(d.supersedes) ?? null) : null,
+  }));
 }

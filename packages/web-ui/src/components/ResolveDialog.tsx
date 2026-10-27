@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
-import { decisionFilePath } from "@agent-board/mcp-server/decision-format";
+import { decisionFilePath, padNumber } from "@agent-board/mcp-server/decision-format";
 import {
   ApiError,
   fetchProjects,
@@ -68,7 +68,9 @@ interface FormProps {
 
 function RatifyForm({ titleId, state, thread, onClose, onDone }: FormProps & { thread: Thread }) {
   const [projects, setProjects] = useState<ProjectSummary[]>();
-  const [projectId, setProjectId] = useState(thread.project?.id ?? "");
+  // A replacement must be filed in the same project as the decision it replaces; the server enforces it too.
+  const lockedProjectId = state.supersedes?.projectId;
+  const [projectId, setProjectId] = useState(lockedProjectId ?? thread.project?.id ?? "");
   const [note, setNote] = useState("");
   const [override, setOverride] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -123,6 +125,14 @@ function RatifyForm({ titleId, state, thread, onClose, onDone }: FormProps & { t
               Wrote <code className="break-all">{result.absolutePath}</code>
             </span>
           </p>
+          {state.supersedes && result.warnings.length === 0 && (
+            <p className="text-zinc-600 dark:text-zinc-400">
+              Marked decision {padNumber(state.supersedes.number)} as superseded.
+            </p>
+          )}
+          {result.warnings.map((w) => (
+            <Warning key={w}>{w}</Warning>
+          ))}
           {result.index.written ? (
             <p className="text-zinc-600 dark:text-zinc-400">
               Updated the index at <code className="break-all">{result.index.path}</code>.
@@ -158,7 +168,7 @@ function RatifyForm({ titleId, state, thread, onClose, onDone }: FormProps & { t
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              disabled={!projects}
+              disabled={!projects || !!lockedProjectId}
               className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-950"
             >
               <option value="" disabled>
@@ -176,6 +186,13 @@ function RatifyForm({ titleId, state, thread, onClose, onDone }: FormProps & { t
                 <code>
                   {project.path}/{preview}
                 </code>
+                {state.supersedes && (
+                  <>
+                    {" "}
+                    and marks decision {padNumber(state.supersedes.number)} “{state.supersedes.title}” as superseded.
+                    The project is fixed because a decision can only be replaced within its own project.
+                  </>
+                )}
               </span>
             )}
           </label>

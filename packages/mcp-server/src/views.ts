@@ -24,11 +24,11 @@ export function listTopicSummaries(type?: ThreadType) {
 }
 
 /** A thread, its project, its latest proposal, and everything its posts and proposals link to. */
-export function getThread(topicId: string) {
+export function getThread(topicId: string, options: { includeHistoryContent?: boolean } = {}) {
   const topic = getTopic(topicId);
   if (!topic) return undefined;
   const threadPosts = getTopicThread(topicId);
-  const proposal = getProposalState(topicId);
+  const proposal = getProposalState(topicId, options);
   const project = topic.projectId
     ? (db
         .select({ id: projects.id, name: projects.name })

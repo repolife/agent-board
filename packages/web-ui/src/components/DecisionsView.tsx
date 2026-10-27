@@ -52,12 +52,15 @@ export function DecisionsView() {
               ) : (
                 <ol className="mt-3 divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
                   {rows.map((d) => (
-                    <li key={d.id} className="flex gap-3 px-4 py-3">
+                    <li key={d.id} className={`flex gap-3 px-4 py-3 ${d.status === "superseded" ? "opacity-60" : ""}`}>
                       <span className="pt-0.5 font-mono text-xs text-zinc-500 tabular-nums">{padNumber(d.number)}</span>
                       <div className="min-w-0 flex-1">
                         <a href={topicHref(d.topicId)} className="font-medium hover:underline">
                           {d.title}
                         </a>
+                        {d.supersedesNumber && (
+                          <p className="mt-0.5 text-xs text-zinc-500">Replaces {padNumber(d.supersedesNumber)}</p>
+                        )}
                         <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
                           <FileText className="size-3.5 shrink-0" aria-hidden />
                           <code className="truncate">{d.filePath}</code>
@@ -71,7 +74,7 @@ export function DecisionsView() {
                               : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                           }`}
                         >
-                          {d.status}
+                          {d.supersededByNumber ? `superseded by ${padNumber(d.supersededByNumber)}` : d.status}
                         </span>
                         <time className="mt-1 block text-zinc-500" dateTime={d.ratifiedAt}>
                           {absoluteTime(d.ratifiedAt)}

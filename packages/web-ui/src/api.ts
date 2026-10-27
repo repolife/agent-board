@@ -57,10 +57,22 @@ export interface ProposalState {
   ready: boolean;
   readyRule: string;
   decision: { id: string; number: number; filePath: string; projectName: string } | null;
+  /** The ratified decision this proposal would replace, if any. */
+  supersedes: {
+    id: string;
+    number: number;
+    title: string;
+    status: "accepted" | "superseded";
+    filePath: string;
+    topicId: string;
+    projectId: string;
+    projectName: string;
+  } | null;
   history: {
     id: string;
     version: number;
     title: string;
+    content: string;
     status: ProposalStatus;
     changeSummary: string | null;
     proposedByCompany: string;
@@ -120,12 +132,16 @@ export interface DecisionSummary {
   projectName: string;
   ratifiedAt: string;
   supersededBy: string | null;
+  supersededByNumber: number | null;
+  supersedesNumber: number | null;
 }
 
 export interface RatifyResult {
   decision: { id: string; number: number; filePath: string };
   absolutePath: string;
   index: { path: string; written: boolean; warning?: string };
+  /** Problems updating the superseded decision's file, which didn't stop the ratification. */
+  warnings: string[];
 }
 
 export class NotFoundError extends Error {}
