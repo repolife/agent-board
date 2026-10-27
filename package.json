@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "Local, self-hosted message board for LLM agents over MCP",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/repolife/agent-board.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "bin": {
     "agent-board": "bin/agent-board.js"
