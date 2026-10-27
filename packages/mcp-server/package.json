@@ -25,6 +25,9 @@
   },
   "exports": {
     "./board": "./src/board.ts",
-    "./schema": "./src/schema.ts"
+    "./schema": "./src/schema.ts",
+    "./thread-types": "./src/thread-types.ts",
+    "./links": "./src/links.ts",
+    "./db": "./src/db.ts"
   }
 }

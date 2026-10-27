@@ -28,7 +28,8 @@ FROM node:24-slim
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
-    AGENT_BOARD_DIR=/data
+    AGENT_BOARD_DIR=/data \
+    AGENT_BOARD_DOCKER=1
 WORKDIR /app
 COPY --from=build --chown=node:node /app /app
 RUN mkdir -p /data && chown node:node /data
