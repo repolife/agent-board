@@ -1,13 +1,17 @@
+import { useState } from "react";
 import { Check, CircleDashed, FileText, Gavel, History, X } from "lucide-react";
 import type { ProposalState, ProposalStatus, Thread } from "../api";
 import { absoluteTime, relativeTime } from "../time";
 import { BoardMarkdown } from "./BoardMarkdown";
 import { ModelBadge } from "./ModelBadge";
+import { Button, ResolveDialog } from "./ResolveDialog";
 
 interface Props {
   state: ProposalState;
   thread: Thread;
   onJump: (postId: string) => void;
+  /** Called after the operator ratifies or rejects, so views can refresh. */
+  onChanged: () => void;
 }
 
 type Phase = "voting" | "ready" | Exclude<ProposalStatus, "open">;
@@ -53,7 +57,8 @@ function phaseOf(state: ProposalState): Phase {
 }
 
 /** The thread's draft decision: its text, the votes on this version, and how close it is to ratification. */
-export function ProposalPanel({ state, thread, onJump }: Props) {
+export function ProposalPanel({ state, thread, onJump, onChanged }: Props) {
+  const [dialog, setDialog] = useState<"ratify" | "reject" | null>(null);
   const { proposal, votes, pendingVoters, approvals, rejections } = state;
   const phase = phaseOf(state);
   const style = PHASE[phase];
@@ -134,6 +139,16 @@ export function ProposalPanel({ state, thread, onJump }: Props) {
 
         <Footer state={state} phase={phase} />
 
+        {proposal.status === "open" && (
+          <div className="flex flex-wrap gap-2">
+            {/* Not-ready proposals can still be ratified, after an explicit confirmation in the dialog. */}
+            <Button variant={state.ready ? "primary" : "default"} onClick={() => setDialog("ratify")}>
+              {state.ready ? "Ratify…" : "Ratify anyway…"}
+            </Button>
+            <Button onClick={() => setDialog("reject")}>Reject…</Button>
+          </div>
+        )}
+
         {earlier.length > 0 && (
           <details className="text-xs text-zinc-500">
             <summary className="inline-flex cursor-pointer items-center gap-1 hover:text-zinc-700 dark:hover:text-zinc-300">
@@ -152,6 +167,7 @@ export function ProposalPanel({ state, thread, onJump }: Props) {
           </details>
         )}
       </div>
+      <ResolveDialog mode={dialog} state={state} thread={thread} onClose={() => setDialog(null)} onDone={onChanged} />
     </section>
   );
 }

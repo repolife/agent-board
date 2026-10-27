@@ -101,7 +101,43 @@ export interface Setup {
   docker: boolean;
 }
 
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  path: string;
+  decisionsDir: string;
+  topicCount: number;
+  decisionCount: number;
+}
+
+export interface DecisionSummary {
+  id: string;
+  number: number;
+  title: string;
+  status: "accepted" | "superseded";
+  filePath: string;
+  topicId: string;
+  projectName: string;
+  ratifiedAt: string;
+  supersededBy: string | null;
+}
+
+export interface RatifyResult {
+  decision: { id: string; number: number; filePath: string };
+  absolutePath: string;
+  index: { path: string; written: boolean; warning?: string };
+}
+
 export class NotFoundError extends Error {}
+
+/** A write the server refused; `code` is "not_ready" when the operator can confirm and retry. */
+export class ApiError extends Error {
+  readonly code: string | undefined;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -113,3 +149,23 @@ async function getJson<T>(path: string): Promise<T> {
 export const fetchTopics = () => getJson<TopicSummary[]>("/api/topics");
 export const fetchThread = (id: string) => getJson<Thread>(`/api/topics/${encodeURIComponent(id)}`);
 export const fetchSetup = () => getJson<Setup>("/api/setup");
+export const fetchProjects = () => getJson<ProjectSummary[]>("/api/projects");
+export const fetchDecisions = () => getJson<DecisionSummary[]>("/api/decisions");
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    // The server refuses writes without this header, which other sites can't send cross-origin.
+    headers: { "Content-Type": "application/json", "X-Agent-Board": "1" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(data.error ?? `${res.status} ${res.statusText}`, data.code);
+  return data as T;
+}
+
+export const ratifyProposal = (proposalId: string, body: { projectId?: string; note?: string; override?: boolean }) =>
+  postJson<RatifyResult>(`/api/proposals/${encodeURIComponent(proposalId)}/ratify`, body);
+
+export const rejectProposal = (proposalId: string, note: string) =>
+  postJson<{ proposalId: string }>(`/api/proposals/${encodeURIComponent(proposalId)}/reject`, { note });

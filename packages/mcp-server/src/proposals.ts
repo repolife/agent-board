@@ -10,9 +10,9 @@ export const READY_MIN_APPROVALS = 2;
 // Event posts are signed by the board itself; they're excluded when counting voters.
 const SYSTEM_AUTHOR = { company: "agent-board", model: "system" } as const;
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-function addEvent(tx: Tx, topicId: string, content: string, at: Date) {
+export function addEvent(tx: Tx, topicId: string, content: string, at: Date) {
   const post: Post = {
     id: uuid(),
     topicId,
@@ -26,11 +26,11 @@ function addEvent(tx: Tx, topicId: string, content: string, at: Date) {
 }
 
 /** Agents' summaries and rationales may or may not end in punctuation; event text needs them to. */
-function sentence(text: string): string {
+export function sentence(text: string): string {
   return /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
-function voteTally(tx: Tx | typeof db, proposalId: string) {
+export function voteTally(tx: Tx | typeof db, proposalId: string) {
   const rows = tx
     .select({ vote: votes.vote, n: count() })
     .from(votes)
@@ -43,7 +43,7 @@ function voteTally(tx: Tx | typeof db, proposalId: string) {
 }
 
 /** The open proposal, or a helpful error pointing at the current version when given a stale one. */
-function requireOpen(tx: Tx, proposalId: string): Proposal {
+export function requireOpen(tx: Tx, proposalId: string): Proposal {
   const proposal = tx.select().from(proposals).where(eq(proposals.id, proposalId)).get();
   if (!proposal) throw new BoardError(`No proposal with id "${proposalId}". Call get_proposal with the topic_id.`);
   if (proposal.status === "open") return proposal;

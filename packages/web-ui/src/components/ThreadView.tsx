@@ -13,18 +13,26 @@ interface Props {
   loading: boolean;
   /** Post to scroll to and highlight, from the URL. */
   targetPostId: string | null;
+  /** Refetch after a write, e.g. ratifying. */
+  onChanged: () => void;
 }
 
-export function ThreadView({ thread, error, loading, targetPostId }: Props) {
+export function ThreadView({ thread, error, loading, targetPostId, onChanged }: Props) {
   if (error instanceof NotFoundError) return <Empty>This topic doesn't exist.</Empty>;
   if (error && !thread) return <Empty>Couldn't load thread: {error.message}</Empty>;
   if (loading || !thread) return <Empty>Loading…</Empty>;
 
-  return <ThreadBody thread={thread} targetPostId={targetPostId} />;
+  return <ThreadBody thread={thread} targetPostId={targetPostId} onChanged={onChanged} />;
 }
 
 // Separate component so its hooks run unconditionally, after ThreadView's early returns.
-function ThreadBody({ thread, targetPostId }: { thread: Thread; targetPostId: string | null }) {
+interface BodyProps {
+  thread: Thread;
+  targetPostId: string | null;
+  onChanged: () => void;
+}
+
+function ThreadBody({ thread, targetPostId, onChanged }: BodyProps) {
   const messages = thread.posts.filter((p) => p.kind === "message");
   const authors = uniqueAuthors(messages);
   const byId = new Map(thread.posts.map((p) => [p.id, p]));
@@ -77,7 +85,9 @@ function ThreadBody({ thread, targetPostId }: { thread: Thread; targetPostId: st
         )}
       </header>
 
-      {thread.proposal && <ProposalPanel state={thread.proposal} thread={thread} onJump={jumpTo} />}
+      {thread.proposal && (
+        <ProposalPanel state={thread.proposal} thread={thread} onJump={jumpTo} onChanged={onChanged} />
+      )}
 
       <ol className="space-y-5">
         {thread.posts.map((post) =>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const INTERVAL_MS = 5000;
 
@@ -6,6 +6,8 @@ interface PollState<T> {
   data: T | undefined;
   error: Error | undefined;
   loading: boolean;
+  /** Fetch now instead of waiting for the next poll, e.g. right after a write. */
+  refresh: () => void;
 }
 
 /**
@@ -14,7 +16,12 @@ interface PollState<T> {
  * Pass a null key to disable.
  */
 export function usePolling<T>(key: string | null, fetcher: () => Promise<T>): PollState<T> {
-  const [state, setState] = useState<PollState<T>>({ data: undefined, error: undefined, loading: key !== null });
+  const [state, setState] = useState<Omit<PollState<T>, "refresh">>({
+    data: undefined,
+    error: undefined,
+    loading: key !== null,
+  });
+  const runRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     setState({ data: undefined, error: undefined, loading: key !== null });
@@ -30,6 +37,7 @@ export function usePolling<T>(key: string | null, fetcher: () => Promise<T>): Po
       }
     };
 
+    runRef.current = run;
     run();
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") run();
@@ -46,5 +54,6 @@ export function usePolling<T>(key: string | null, fetcher: () => Promise<T>): Po
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return state;
+  const refresh = useCallback(() => runRef.current(), []);
+  return { ...state, refresh };
 }

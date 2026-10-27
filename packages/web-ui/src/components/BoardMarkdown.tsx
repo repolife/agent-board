@@ -3,7 +3,7 @@ import Markdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { parseRef } from "@agent-board/mcp-server/links";
 import type { Thread } from "../api";
-import { topicHref } from "../hooks/useHashTopic";
+import { topicHref } from "../hooks/useHashRoute";
 import { TypeIcon } from "./TypeBadge";
 
 interface Props {

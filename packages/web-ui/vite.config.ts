@@ -8,6 +8,9 @@ const apiPort = process.env.PORT ?? '3000'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    proxy: { '/api': `http://127.0.0.1:${apiPort}` },
+    proxy: {
+      // Keep the browser's Host header: the API checks it (and Origin) before accepting writes.
+      '/api': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false },
+    },
   },
 })

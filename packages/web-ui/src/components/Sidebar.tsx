@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { Gavel, MessagesSquare, Plug, Search } from "lucide-react";
+import { FileText, Gavel, MessagesSquare, Plug, Search } from "lucide-react";
 import { THREAD_TYPE_INFO, THREAD_TYPES } from "@agent-board/mcp-server/thread-types";
 import type { ThreadType, TopicSummary } from "../api";
-import { topicHref } from "../hooks/useHashTopic";
+import { DECISIONS_HREF, topicHref } from "../hooks/useHashRoute";
 import { absoluteTime, relativeTime } from "../time";
 import { TypeIcon } from "./TypeBadge";
 
@@ -10,12 +10,17 @@ interface Props {
   topics: TopicSummary[] | undefined;
   error: Error | undefined;
   selectedId: string | null;
+  decisionsActive: boolean;
   onConnect: () => void;
 }
 
-export function Sidebar({ topics, error, selectedId, onConnect }: Props) {
+export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect }: Props) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ThreadType | null>(null);
+  const [onlyReady, setOnlyReady] = useState(false);
+  const readyCount = topics?.filter((t) => t.proposal?.status === "ready").length ?? 0;
+  // Once the inbox empties, drop the filter rather than showing an empty list.
+  const showOnlyReady = onlyReady && readyCount > 0;
 
   const countsByType = useMemo(() => {
     const counts = Object.fromEntries(THREAD_TYPES.map((t) => [t, 0])) as Record<ThreadType, number>;
@@ -25,8 +30,13 @@ export function Sidebar({ topics, error, selectedId, onConnect }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return topics?.filter((t) => (!typeFilter || t.type === typeFilter) && (!q || t.title.toLowerCase().includes(q)));
-  }, [topics, query, typeFilter]);
+    return topics?.filter(
+      (t) =>
+        (!typeFilter || t.type === typeFilter) &&
+        (!q || t.title.toLowerCase().includes(q)) &&
+        (!showOnlyReady || t.proposal?.status === "ready"),
+    );
+  }, [topics, query, typeFilter, showOnlyReady]);
 
   return (
     <div className="flex h-full flex-col">
@@ -43,7 +53,33 @@ export function Sidebar({ topics, error, selectedId, onConnect }: Props) {
         </button>
       </header>
 
+      <nav className="flex gap-1 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800" aria-label="Views">
+        <ViewLink href="#/" active={!decisionsActive}>
+          <MessagesSquare className="size-3.5" aria-hidden /> Threads
+        </ViewLink>
+        <ViewLink href={DECISIONS_HREF} active={decisionsActive}>
+          <FileText className="size-3.5" aria-hidden /> Decisions
+        </ViewLink>
+      </nav>
+
       <div className="space-y-2.5 px-3 pt-3">
+        {readyCount > 0 && (
+          <button
+            type="button"
+            aria-pressed={showOnlyReady}
+            onClick={() => setOnlyReady(!showOnlyReady)}
+            className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-medium ${
+              showOnlyReady
+                ? "bg-emerald-600 text-white"
+                : "bg-emerald-50 text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-200 dark:hover:bg-emerald-950"
+            }`}
+          >
+            <Gavel className="size-4" aria-hidden />
+            {readyCount} {readyCount === 1 ? "proposal" : "proposals"} ready to ratify
+            <span className="ml-auto text-xs font-normal opacity-80">{showOnlyReady ? "Show all" : "Show"}</span>
+          </button>
+        )}
+
         <label className="relative block">
           <span className="sr-only">Filter topics</span>
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-zinc-400" />
@@ -130,6 +166,22 @@ export function Sidebar({ topics, error, selectedId, onConnect }: Props) {
         </ul>
       </nav>
     </div>
+  );
+}
+
+function ViewLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
+        active
+          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      }`}
+    >
+      {children}
+    </a>
   );
 }
 
