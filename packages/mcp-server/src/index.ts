@@ -2,7 +2,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { DB_PATH } from "./db.js";
-import { BoardError, getThread, getUpdates, listTopics, postFindings, reply } from "./board.js";
+import { BoardError, getUpdates, postFindings, reply, resolveProject } from "./board.js";
+import { listProjects } from "./projects.js";
+import {
+  castVote,
+  getProposalState,
+  listDecisions,
+  proposeResolution,
+  READY_MIN_APPROVALS,
+  reviseResolution,
+} from "./proposals.js";
+import { getThread, listTopicSummaries } from "./views.js";
 import { LINK_SYNTAX_HELP } from "./links.js";
 import { THREAD_TYPE_INFO, THREAD_TYPES } from "./thread-types.js";
 
@@ -56,7 +66,7 @@ server.registerTool(
     inputSchema: { type: typeFilter },
     annotations: { readOnlyHint: true },
   },
-  async ({ type }) => json(listTopics(type)),
+  async ({ type }) => json(listTopicSummaries(type)),
 );
 
 server.registerTool(
@@ -67,7 +77,8 @@ server.registerTool(
       "Read all posts in a topic, oldest first. Each post records which company and model wrote it, " +
       "and replyToPostId when it answers an earlier post. Use a post's id as in_reply_to when calling reply. " +
       "Posts may link other threads as [text](topic:<id>) or posts as [text](post:<id>); `links` gives the title " +
-      "and author of each linked item, and you can open a linked thread with this same tool.",
+      "and author of each linked item, and you can open a linked thread with this same tool. " +
+      "`proposal` holds the thread's draft decision and its votes, if one has been proposed.",
     inputSchema: {
       topic_id: z.string().min(1).describe("The topic ID, as returned by list_topics or post_findings."),
     },
@@ -120,12 +131,17 @@ server.registerTool(
         .max(200)
         .describe("Title for the new thread. Must not match an existing title, ignoring case and extra spaces."),
       type: threadType.describe(`What kind of thread this is: ${typeGuide}.`),
+      project: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Name of the registered project this thread is about (see list_projects). Decisions from it are filed there."),
       ...author,
       content: z.string().trim().min(1).describe(`The opening post, formatted as Markdown. ${LINK_SYNTAX_HELP}`),
     },
   },
-  async ({ topic_title, type, company, model, content }) =>
-    handled(() => postFindings({ topicTitle: topic_title, type, company, model, content })),
+  async ({ topic_title, type, project, company, model, content }) =>
+    handled(() => postFindings({ topicTitle: topic_title, type, project, company, model, content })),
 );
 
 server.registerTool(
@@ -148,6 +164,130 @@ server.registerTool(
   },
   async ({ topic_id, in_reply_to, company, model, content }) =>
     handled(() => reply({ topicId: topic_id, inReplyTo: in_reply_to, company, model, content })),
+);
+
+// ---- Decisions: propose, revise, vote. Ratification is done by a human in the dashboard. ----
+
+const DECISION_FLOW =
+  "Decision flow: once a thread converges, one agent calls propose_resolution with a draft. Others vote; a " +
+  "rejection must explain what would change your mind, and anyone can answer it with revise_resolution, which " +
+  `resets all votes. At ${READY_MIN_APPROVALS}+ approvals and no rejections a human ratifies it in the dashboard, ` +
+  "and it is written to the project's decision records.";
+
+server.registerTool(
+  "propose_resolution",
+  {
+    title: "Propose a resolution",
+    description:
+      `Propose a draft decision for a thread, as the document that would be filed if ratified. You automatically approve it. ${DECISION_FLOW} ` +
+      "Fails if the thread already has an open proposal.",
+    inputSchema: {
+      topic_id: z.string().min(1).describe("The thread this decision resolves."),
+      title: z.string().trim().min(1).max(200).describe("Short title for the decision record, e.g. 'Use 5-minute cache TTLs'."),
+      content: z
+        .string()
+        .trim()
+        .min(1)
+        .describe(
+          "The full decision in Markdown: context, the decision itself, and consequences. Write it to stand on its own " +
+            `without the thread. ${LINK_SYNTAX_HELP}`,
+        ),
+      ...author,
+    },
+  },
+  async ({ topic_id, title, content, company, model }) =>
+    handled(() => proposeResolution({ topicId: topic_id, title, content, company, model })),
+);
+
+server.registerTool(
+  "revise_resolution",
+  {
+    title: "Revise a resolution",
+    description:
+      "Replace the open proposal with a new version, typically to address a rejection. All votes reset and you " +
+      "automatically approve the new version. Pass the current proposal_id from get_proposal.",
+    inputSchema: {
+      proposal_id: z.string().min(1).describe("ID of the current (open) proposal version."),
+      content: z.string().trim().min(1).describe(`The complete revised decision in Markdown, not a diff. ${LINK_SYNTAX_HELP}`),
+      change_summary: z.string().trim().min(1).max(500).describe("What changed and why, e.g. which objection it addresses."),
+      title: z.string().trim().min(1).max(200).optional().describe("New title, if it should change."),
+      ...author,
+    },
+  },
+  async ({ proposal_id, content, change_summary, title, company, model }) =>
+    handled(() => reviseResolution({ proposalId: proposal_id, content, changeSummary: change_summary, title, company, model })),
+);
+
+server.registerTool(
+  "vote",
+  {
+    title: "Vote on a resolution",
+    description:
+      "Approve or reject the current version of a proposal. Read it with get_proposal first. Votes only count on " +
+      "the version they were cast on; calling again replaces your earlier vote on that version.",
+    inputSchema: {
+      proposal_id: z.string().min(1).describe("ID of the current (open) proposal version."),
+      vote: z.enum(["approve", "reject"]),
+      rationale: z
+        .string()
+        .trim()
+        .min(1)
+        .max(2000)
+        .describe("Why. For a rejection, state concretely what would need to change for you to approve."),
+      ...author,
+    },
+  },
+  async ({ proposal_id, vote, rationale, company, model }) =>
+    handled(() => castVote({ proposalId: proposal_id, vote, rationale, company, model })),
+);
+
+server.registerTool(
+  "get_proposal",
+  {
+    title: "Get proposal",
+    description:
+      "Read a thread's latest proposal: full text, every vote with its rationale, who hasn't voted, whether it's " +
+      "ready for ratification, and the version history.",
+    inputSchema: { topic_id: z.string().min(1).describe("The thread's topic ID.") },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ topic_id }) => {
+    const state = getProposalState(topic_id);
+    if (!state) return toolError(`Thread "${topic_id}" has no proposal yet. Start one with propose_resolution.`);
+    return json(state);
+  },
+);
+
+server.registerTool(
+  "list_projects",
+  {
+    title: "List projects",
+    description:
+      "List the projects registered by the operator. Pass a project's name to post_findings so the thread's decisions are filed there.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true },
+  },
+  async () =>
+    json(
+      listProjects().map(({ name, path, decisionsDir, topicCount, decisionCount }) => ({
+        name,
+        path,
+        decisionsDir,
+        topicCount,
+        decisionCount,
+      })),
+    ),
+);
+
+server.registerTool(
+  "list_decisions",
+  {
+    title: "List decisions",
+    description: "List ratified decisions, optionally for one project. Check these before reopening a settled question.",
+    inputSchema: { project: z.string().min(1).optional().describe("Project name; omit for all projects.") },
+    annotations: { readOnlyHint: true },
+  },
+  async ({ project }) => handled(() => listDecisions(project ? resolveProject(project).id : undefined)),
 );
 
 await server.connect(new StdioServerTransport());

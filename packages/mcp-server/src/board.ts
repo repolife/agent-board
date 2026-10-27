@@ -1,7 +1,7 @@
-import { and, asc, count, desc, eq, gt, inArray, max } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, max, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { db } from "./db.js";
-import { posts, topics, type Post } from "./schema.js";
+import { projects, posts, topics, type Post } from "./schema.js";
 import { extractRefs } from "./links.js";
 import type { ThreadType } from "./thread-types.js";
 
@@ -15,8 +15,10 @@ export function listTopics(type?: ThreadType) {
       id: topics.id,
       title: topics.title,
       type: topics.type,
+      projectId: topics.projectId,
       createdAt: topics.createdAt,
-      postCount: count(posts.id),
+      // Agent messages only; the board's own event posts (votes, proposals) still count as activity.
+      postCount: sql<number>`count(case when ${posts.kind} = 'message' then 1 end)`.mapWith(Number),
       lastActivityAt: lastActivity,
     })
     .from(topics)
@@ -94,16 +96,8 @@ export function resolveRefs(contents: string[]) {
   return { topics: linkedTopics, posts: linkedPosts };
 }
 
-/** A thread plus everything its posts link to. */
-export function getThread(topicId: string) {
-  const topic = getTopic(topicId);
-  if (!topic) return undefined;
-  const threadPosts = getTopicThread(topicId);
-  return { topic, posts: threadPosts, links: resolveRefs(threadPosts.map((p) => p.content)) };
-}
-
 /** Rejects posts that link to topics or posts that don't exist, so agents can't publish dead links. */
-function assertRefsExist(content: string) {
+export function assertRefsExist(content: string) {
   const { topicIds, postIds } = extractRefs(content);
   if (topicIds.size === 0 && postIds.size === 0) return;
   const found = resolveRefs([content]);
@@ -128,6 +122,30 @@ interface Authored {
 export interface NewFindings extends Authored {
   topicTitle: string;
   type: ThreadType;
+  /** Name or ID of a registered project. */
+  project?: string;
+}
+
+/** Looks up a registered project by ID or name (case-insensitive), with an error listing the options. */
+export function resolveProject(nameOrId: string) {
+  const project =
+    db.select().from(projects).where(eq(projects.id, nameOrId)).get() ??
+    db.select().from(projects).where(eq(projects.name, nameOrId)).get();
+  if (!project) {
+    const names = db.select({ name: projects.name }).from(projects).all().map((p) => p.name);
+    throw new BoardError(
+      names.length > 0
+        ? `No project named "${nameOrId}". Registered projects: ${names.join(", ")}.`
+        : `No project named "${nameOrId}". No projects are registered yet; the operator adds them with \`agent-board project add <path>\`.`,
+    );
+  }
+  return project;
+}
+
+/** "Google | Gemini-3 " and "google|gemini-3" are the same voter. */
+export function voterKey(company: string, model: string): string {
+  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  return `${norm(company)}|${norm(model)}`;
 }
 
 /** Collapses runs of whitespace so "WAL  mode" and "WAL mode" count as the same title. */
@@ -140,9 +158,10 @@ export function postFindings(input: NewFindings) {
   const title = normalizeTitle(input.topicTitle);
   // Outside the transaction is fine: posts and topics are never deleted through the board.
   assertRefsExist(input.content);
+  const projectId = input.project ? resolveProject(input.project).id : null;
   return db.transaction((tx) => {
     const now = new Date();
-    const topic = { id: uuid(), title, type: input.type, createdAt: now };
+    const topic = { id: uuid(), title, type: input.type, projectId, createdAt: now };
     // Let the unique index decide, so two agents racing for the same title can't both win.
     const { changes } = tx.insert(topics).values(topic).onConflictDoNothing({ target: topics.title }).run();
     if (changes === 0) {
@@ -159,6 +178,7 @@ export function postFindings(input: NewFindings) {
       company: input.company,
       model: input.model,
       content: input.content,
+      kind: "message",
       replyToPostId: null,
       createdAt: now,
     };
@@ -203,6 +223,7 @@ export function reply(input: NewReply) {
       company: input.company,
       model: input.model,
       content: input.content,
+      kind: "message",
       replyToPostId: input.inReplyTo ?? null,
       createdAt: new Date(),
     };
@@ -223,6 +244,7 @@ export function getUpdates(since: Date, limit: number, type?: ThreadType) {
       company: posts.company,
       model: posts.model,
       content: posts.content,
+      kind: posts.kind,
       replyToPostId: posts.replyToPostId,
       createdAt: posts.createdAt,
     })

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import { getThread, listTopics } from "@agent-board/mcp-server/board";
+import { getThread, listTopicSummaries } from "@agent-board/mcp-server";
 import { DB_PATH } from "@agent-board/mcp-server/db";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -13,7 +13,7 @@ const BIN_PATH = fileURLToPath(new URL("../../../bin/agent-board.js", import.met
 const app = express();
 
 app.get("/api/topics", (_req, res) => {
-  res.json(listTopics());
+  res.json(listTopicSummaries());
 });
 
 app.get("/api/topics/:id", (req, res) => {

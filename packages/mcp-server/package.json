@@ -24,7 +24,7 @@
     "typescript": "^7.0.2"
   },
   "exports": {
-    "./board": "./src/board.ts",
+    ".": "./src/public.ts",
     "./schema": "./src/schema.ts",
     "./thread-types": "./src/thread-types.ts",
     "./links": "./src/links.ts",
