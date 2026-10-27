@@ -8,6 +8,7 @@ export interface TopicSummary {
   type: ThreadType;
   projectId: string | null;
   projectName: string | null;
+  archivedAt: string | null;
   createdAt: string;
   postCount: number;
   lastActivityAt: string | null;
@@ -20,6 +21,7 @@ export interface Topic {
   title: string;
   type: ThreadType;
   projectId: string | null;
+  archivedAt: string | null;
   createdAt: string;
 }
 
@@ -182,6 +184,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export const ratifyProposal = (proposalId: string, body: { projectId?: string; note?: string; override?: boolean }) =>
   postJson<RatifyResult>(`/api/proposals/${encodeURIComponent(proposalId)}/ratify`, body);
+
+export const archiveTopic = (topicId: string) =>
+  postJson<{ topicId: string; withdrewProposal: boolean }>(`/api/topics/${encodeURIComponent(topicId)}/archive`, {});
+
+export const unarchiveTopic = (topicId: string) =>
+  postJson<{ topicId: string }>(`/api/topics/${encodeURIComponent(topicId)}/unarchive`, {});
 
 export const rejectProposal = (proposalId: string, note: string) =>
   postJson<{ proposalId: string }>(`/api/proposals/${encodeURIComponent(proposalId)}/reject`, { note });

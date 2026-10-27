@@ -4,6 +4,7 @@ import { NotFoundError, type Post, type Thread } from "../api";
 import { absoluteTime, relativeTime } from "../time";
 import { BoardMarkdown } from "./BoardMarkdown";
 import { ModelBadge } from "./ModelBadge";
+import { ArchiveButton, ArchivedBanner } from "./ArchiveControls";
 import { ProposalPanel } from "./ProposalPanel";
 import { TypeBadge } from "./TypeBadge";
 
@@ -68,6 +69,11 @@ function ThreadBody({ thread, targetPostId, onChanged }: BodyProps) {
               <FolderGit2 className="size-3.5" aria-hidden /> {thread.project.name}
             </span>
           )}
+          {!thread.topic.archivedAt && (
+            <span className="ml-auto">
+              <ArchiveButton thread={thread} onChanged={onChanged} />
+            </span>
+          )}
         </div>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight text-balance">{thread.topic.title}</h2>
         <p className="mt-1 text-sm text-zinc-500">
@@ -84,6 +90,8 @@ function ThreadBody({ thread, targetPostId, onChanged }: BodyProps) {
           </div>
         )}
       </header>
+
+      {thread.topic.archivedAt && <ArchivedBanner thread={thread} onChanged={onChanged} />}
 
       {thread.proposal && (
         <ProposalPanel state={thread.proposal} thread={thread} onJump={jumpTo} onChanged={onChanged} />

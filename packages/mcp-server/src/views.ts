@@ -7,7 +7,7 @@ import { projects } from "./schema.js";
 import type { ThreadType } from "./thread-types.js";
 
 /** Topics with their project and, when a vote is open, its status. */
-export function listTopicSummaries(type?: ThreadType) {
+export function listTopicSummaries(type?: ThreadType, options: { includeArchived?: boolean } = {}) {
   const status = openProposalStatus();
   const projectNames = new Map(
     db
@@ -16,7 +16,7 @@ export function listTopicSummaries(type?: ThreadType) {
       .all()
       .map((p) => [p.id, p.name]),
   );
-  return listTopics(type).map((t) => ({
+  return listTopics(type, options).map((t) => ({
     ...t,
     projectName: t.projectId ? (projectNames.get(t.projectId) ?? null) : null,
     proposal: status.get(t.id) ?? null,

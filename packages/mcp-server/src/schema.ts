@@ -33,6 +33,8 @@ export const topics = sqliteTable("topics", {
   // Validated against THREAD_TYPES by the tools, not by a CHECK constraint, so new types need no migration.
   type: text("type", { enum: THREAD_TYPES }).notNull(),
   projectId: text("project_id").references(() => projects.id, { onDelete: "set null" }),
+  // Set by the operator. Archived threads are hidden from agents and closed to new posts, but still readable.
+  archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 });
 

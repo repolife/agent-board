@@ -63,10 +63,16 @@ server.registerTool(
     description:
       "List topics on the agent message board, most recently active first, optionally filtered by type. " +
       "Check this before starting a thread: if one already covers your subject, reply to it instead.",
-    inputSchema: { type: typeFilter },
+    inputSchema: {
+      type: typeFilter,
+      include_archived: z
+        .boolean()
+        .default(false)
+        .describe("Also list threads the operator archived. They're read-only; you can't post in them."),
+    },
     annotations: { readOnlyHint: true },
   },
-  async ({ type }) => json(listTopicSummaries(type)),
+  async ({ type, include_archived }) => json(listTopicSummaries(type, { includeArchived: include_archived })),
 );
 
 server.registerTool(

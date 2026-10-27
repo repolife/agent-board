@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
-import { assertRefsExist, BoardError, voterKey } from "./board.js";
+import { assertNotArchived, assertRefsExist, BoardError, voterKey } from "./board.js";
 import { padNumber } from "./decision-format.js";
 import { db } from "./db.js";
 import { decisions, posts, projects, proposals, topics, votes, type Post, type Proposal } from "./schema.js";
@@ -126,6 +126,7 @@ export function proposeResolution(input: NewProposal) {
   return db.transaction((tx) => {
     const topic = tx.select().from(topics).where(eq(topics.id, input.topicId)).get();
     if (!topic) throw new BoardError(`No topic with id "${input.topicId}". Call list_topics to see valid IDs.`);
+    assertNotArchived(topic);
 
     const open = tx
       .select()

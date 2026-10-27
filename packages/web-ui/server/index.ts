@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
 import {
+  archiveTopic,
   BoardError,
   getThread,
   listDecisions,
@@ -10,6 +11,7 @@ import {
   NotReadyError,
   ratifyProposal,
   rejectProposal,
+  unarchiveTopic,
 } from "@agent-board/mcp-server";
 import { DB_PATH } from "@agent-board/mcp-server/db";
 
@@ -77,7 +79,8 @@ app.use(guardHost);
 app.use("/api", express.json({ limit: "64kb" }));
 
 app.get("/api/topics", (_req, res) => {
-  res.json(listTopicSummaries());
+  // The dashboard hides archived threads itself, behind a toggle.
+  res.json(listTopicSummaries(undefined, { includeArchived: true }));
 });
 
 app.get("/api/topics/:id", (req, res) => {
@@ -126,6 +129,14 @@ app.post("/api/proposals/:id/ratify", guardWrite, (req, res) => {
 app.post("/api/proposals/:id/reject", guardWrite, (req, res) => {
   const { note } = req.body ?? {};
   respond(res, () => rejectProposal({ proposalId: String(req.params.id), note: typeof note === "string" ? note : "" }));
+});
+
+app.post("/api/topics/:id/archive", guardWrite, (req, res) => {
+  respond(res, () => archiveTopic(String(req.params.id)));
+});
+
+app.post("/api/topics/:id/unarchive", guardWrite, (req, res) => {
+  respond(res, () => unarchiveTopic(String(req.params.id)));
 });
 
 app.use("/api", (_req, res) => {

@@ -1,14 +1,24 @@
-import { and, asc, desc, eq, gt, inArray, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, max, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { db } from "./db.js";
-import { projects, posts, topics, type Post } from "./schema.js";
+import { projects, posts, topics, type Post, type Topic } from "./schema.js";
 import { extractRefs } from "./links.js";
 import type { ThreadType } from "./thread-types.js";
 
 /** A problem with the caller's input that the agent can fix, e.g. an unknown ID. */
 export class BoardError extends Error {}
 
-export function listTopics(type?: ThreadType) {
+/** Refuses writes to archived threads, with a message that tells an agent what to do instead. */
+export function assertNotArchived(topic: Pick<Topic, "title" | "archivedAt">) {
+  if (topic.archivedAt) {
+    throw new BoardError(
+      `"${topic.title}" is archived, so it no longer accepts posts, proposals, or votes. ` +
+        "Start a new thread with post_findings if the subject needs more discussion.",
+    );
+  }
+}
+
+export function listTopics(type?: ThreadType, options: { includeArchived?: boolean } = {}) {
   const lastActivity = max(posts.createdAt);
   return db
     .select({
@@ -16,6 +26,7 @@ export function listTopics(type?: ThreadType) {
       title: topics.title,
       type: topics.type,
       projectId: topics.projectId,
+      archivedAt: topics.archivedAt,
       createdAt: topics.createdAt,
       // Agent messages only; the board's own event posts (votes, proposals) still count as activity.
       postCount: sql<number>`count(case when ${posts.kind} = 'message' then 1 end)`.mapWith(Number),
@@ -23,7 +34,9 @@ export function listTopics(type?: ThreadType) {
     })
     .from(topics)
     .leftJoin(posts, eq(posts.topicId, topics.id))
-    .where(type ? eq(topics.type, type) : undefined)
+    .where(
+      and(type ? eq(topics.type, type) : undefined, options.includeArchived ? undefined : isNull(topics.archivedAt)),
+    )
     .groupBy(topics.id)
     .orderBy(desc(lastActivity), desc(topics.createdAt))
     .all();
@@ -166,6 +179,12 @@ export function postFindings(input: NewFindings) {
     const { changes } = tx.insert(topics).values(topic).onConflictDoNothing({ target: topics.title }).run();
     if (changes === 0) {
       const existing = tx.select().from(topics).where(eq(topics.title, title)).get()!;
+      if (existing.archivedAt) {
+        throw new BoardError(
+          `An archived thread is already titled "${existing.title}" (topic_id: "${existing.id}"). ` +
+            "Titles stay reserved after archiving; choose a different title for the new thread.",
+        );
+      }
       throw new BoardError(
         `A thread titled "${existing.title}" already exists (topic_id: "${existing.id}", type: ${existing.type}). ` +
           `Use reply with that topic_id to post in it, or choose a different title for a new thread.`,
@@ -200,13 +219,10 @@ export function reply(input: NewReply) {
     if (!topic) {
       throw new BoardError(`No topic with id "${input.topicId}". Call list_topics to see valid IDs.`);
     }
+    assertNotArchived(topic);
 
     if (input.inReplyTo) {
-      const parent = tx
-        .select({ topicId: posts.topicId })
-        .from(posts)
-        .where(eq(posts.id, input.inReplyTo))
-        .get();
+      const parent = tx.select({ topicId: posts.topicId }).from(posts).where(eq(posts.id, input.inReplyTo)).get();
       if (!parent) {
         throw new BoardError(`No post with id "${input.inReplyTo}". Call get_topic_thread to see post IDs.`);
       }
@@ -250,7 +266,7 @@ export function getUpdates(since: Date, limit: number, type?: ThreadType) {
     })
     .from(posts)
     .innerJoin(topics, eq(topics.id, posts.topicId))
-    .where(and(gt(posts.createdAt, since), type ? eq(topics.type, type) : undefined))
+    .where(and(gt(posts.createdAt, since), isNull(topics.archivedAt), type ? eq(topics.type, type) : undefined))
     .orderBy(asc(posts.createdAt))
     .limit(limit + 1)
     .all();

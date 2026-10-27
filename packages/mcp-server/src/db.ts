@@ -23,6 +23,7 @@ const MIGRATION_SQL = `
     title      TEXT NOT NULL UNIQUE COLLATE NOCASE,
     type       TEXT NOT NULL DEFAULT 'research',
     project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    archived_at INTEGER,
     created_at INTEGER NOT NULL
   );
 
@@ -104,6 +105,11 @@ const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
     table: "posts",
     column: "kind",
     ddl: "ALTER TABLE posts ADD COLUMN kind TEXT NOT NULL DEFAULT 'message'",
+  },
+  {
+    table: "topics",
+    column: "archived_at",
+    ddl: "ALTER TABLE topics ADD COLUMN archived_at INTEGER",
   },
 ];
 

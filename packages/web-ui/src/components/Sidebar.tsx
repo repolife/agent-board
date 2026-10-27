@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { FileText, Gavel, MessagesSquare, Plug, Search } from "lucide-react";
+import { Archive, FileText, Gavel, MessagesSquare, Plug, Search } from "lucide-react";
 import { THREAD_TYPE_INFO, THREAD_TYPES } from "@agent-board/mcp-server/thread-types";
 import type { ThreadType, TopicSummary } from "../api";
 import { DECISIONS_HREF, topicHref } from "../hooks/useHashRoute";
@@ -18,15 +18,17 @@ export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ThreadType | null>(null);
   const [onlyReady, setOnlyReady] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = topics?.filter((t) => t.archivedAt).length ?? 0;
   const readyCount = topics?.filter((t) => t.proposal?.status === "ready").length ?? 0;
   // Once the inbox empties, drop the filter rather than showing an empty list.
   const showOnlyReady = onlyReady && readyCount > 0;
 
   const countsByType = useMemo(() => {
     const counts = Object.fromEntries(THREAD_TYPES.map((t) => [t, 0])) as Record<ThreadType, number>;
-    for (const t of topics ?? []) counts[t.type]++;
+    for (const t of topics ?? []) if (showArchived || !t.archivedAt) counts[t.type]++;
     return counts;
-  }, [topics]);
+  }, [topics, showArchived]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -34,16 +36,18 @@ export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect 
       (t) =>
         (!typeFilter || t.type === typeFilter) &&
         (!q || t.title.toLowerCase().includes(q)) &&
-        (!showOnlyReady || t.proposal?.status === "ready"),
+        (!showOnlyReady || t.proposal?.status === "ready") &&
+        // Keep the open thread listed even if archived, so the selection doesn't vanish.
+        (showArchived || !t.archivedAt || t.id === selectedId),
     );
-  }, [topics, query, typeFilter, showOnlyReady]);
+  }, [topics, query, typeFilter, showOnlyReady, showArchived, selectedId]);
 
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3.5 dark:border-zinc-800">
         <MessagesSquare className="size-5 text-zinc-500" aria-hidden />
         <h1 className="font-semibold tracking-tight">Agent Board</h1>
-        {topics && <span className="text-xs text-zinc-500">· {topics.length}</span>}
+        {topics && <span className="text-xs text-zinc-500">· {topics.length - archivedCount}</span>}
         <button
           type="button"
           onClick={onConnect}
@@ -143,10 +147,10 @@ export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect 
                     active
                       ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                       : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-                  }`}
+                  } ${t.archivedAt && !active ? "opacity-60" : ""}`}
                 >
-                  <span className="mt-0.5" title={THREAD_TYPE_INFO[t.type].label}>
-                    <TypeIcon type={t.type} />
+                  <span className="mt-0.5" title={t.archivedAt ? "Archived" : THREAD_TYPE_INFO[t.type].label}>
+                    {t.archivedAt ? <Archive className="size-3.5 shrink-0" aria-hidden /> : <TypeIcon type={t.type} />}
                   </span>
                   <span className="min-w-0">
                     <span className="line-clamp-2 text-sm font-medium">{t.title}</span>
@@ -164,6 +168,17 @@ export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect 
             );
           })}
         </ul>
+        {archivedCount > 0 && (
+          <button
+            type="button"
+            aria-pressed={showArchived}
+            onClick={() => setShowArchived(!showArchived)}
+            className="mt-2 inline-flex w-full items-center gap-1.5 rounded-md px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+          >
+            <Archive className="size-3.5" aria-hidden />
+            {showArchived ? "Hide" : "Show"} {archivedCount} archived
+          </button>
+        )}
       </nav>
     </div>
   );

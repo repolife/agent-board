@@ -5,7 +5,8 @@ import type { ProposalState, ProposalStatus, Thread } from "../api";
 import { absoluteTime, relativeTime } from "../time";
 import { BoardMarkdown } from "./BoardMarkdown";
 import { ModelBadge } from "./ModelBadge";
-import { Button, ResolveDialog } from "./ResolveDialog";
+import { ResolveDialog } from "./ResolveDialog";
+import { Button } from "./ui";
 import { VersionDiff } from "./VersionDiff";
 import { topicHref } from "../hooks/useHashRoute";
 
