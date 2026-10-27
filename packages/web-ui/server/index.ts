@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
 import {
+  addProject,
   archiveTopic,
   BoardError,
   getThread,
@@ -11,6 +12,7 @@ import {
   NotReadyError,
   ratifyProposal,
   rejectProposal,
+  removeProject,
   unarchiveTopic,
 } from "@agent-board/mcp-server";
 import { DB_PATH } from "@agent-board/mcp-server/db";
@@ -107,6 +109,20 @@ app.get("/api/setup", (_req, res) => {
 
 app.get("/api/projects", (_req, res) => {
   res.json(listProjects());
+});
+
+// Registering a project chooses a folder ratified decisions are written into, so it's a guarded write.
+app.post("/api/projects", guardWrite, (req, res) => {
+  const { path, name, decisionsDir } = req.body ?? {};
+  const optional = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  respond(res, () => {
+    if (typeof path !== "string" || !path.trim()) throw new BoardError("Enter the project folder's path.");
+    return addProject({ path, name: optional(name), decisionsDir: optional(decisionsDir) });
+  });
+});
+
+app.post("/api/projects/:id/remove", guardWrite, (req, res) => {
+  respond(res, () => removeProject(String(req.params.id)));
 });
 
 app.get("/api/decisions", (_req, res) => {

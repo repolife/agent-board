@@ -1,7 +1,7 @@
 import { ArrowLeft, FileText, FolderGit2 } from "lucide-react";
 import { padNumber } from "@agent-board/mcp-server/decision-format";
 import { fetchDecisions, fetchProjects } from "../api";
-import { topicHref } from "../hooks/useHashRoute";
+import { PROJECTS_HREF, topicHref } from "../hooks/useHashRoute";
 import { usePolling } from "../hooks/usePolling";
 import { absoluteTime } from "../time";
 
@@ -29,10 +29,13 @@ export function DecisionsView() {
       {projects.data.length === 0 && (
         <div className="mt-6 rounded-lg border border-dashed border-zinc-300 p-6 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
           <p className="font-medium text-zinc-900 dark:text-zinc-100">No projects registered yet</p>
-          <p className="mt-1">Decisions are filed into a project folder. Register one in a terminal:</p>
-          <code className="mt-2 block rounded bg-zinc-100 px-2 py-1.5 text-xs dark:bg-zinc-800">
-            agent-board project add /path/to/your/repo
-          </code>
+          <p className="mt-1">
+            Decisions are filed into a project folder.{" "}
+            <a href={PROJECTS_HREF} className="font-medium text-zinc-900 underline dark:text-zinc-100">
+              Add a project
+            </a>{" "}
+            to get started.
+          </p>
         </div>
       )}
 

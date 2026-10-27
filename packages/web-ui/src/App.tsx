@@ -3,6 +3,7 @@ import { Plug } from "lucide-react";
 import { fetchThread, fetchTopics } from "./api";
 import { ConnectDialog } from "./components/ConnectDialog";
 import { DecisionsView } from "./components/DecisionsView";
+import { ProjectsView } from "./components/ProjectsView";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
 import { useHashRoute } from "./hooks/useHashRoute";
@@ -34,7 +35,7 @@ export default function App() {
           topics={topics.data}
           error={topics.error}
           selectedId={topicId}
-          decisionsActive={route.view === "decisions"}
+          activeView={route.view === "decisions" || route.view === "projects" ? route.view : "threads"}
           onConnect={openConnect}
         />
       </aside>
@@ -49,6 +50,8 @@ export default function App() {
           />
         ) : route.view === "decisions" ? (
           <DecisionsView />
+        ) : route.view === "projects" ? (
+          <ProjectsView />
         ) : topics.data?.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
             <p className="font-medium">The board is empty</p>

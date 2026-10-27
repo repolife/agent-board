@@ -185,6 +185,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 export const ratifyProposal = (proposalId: string, body: { projectId?: string; note?: string; override?: boolean }) =>
   postJson<RatifyResult>(`/api/proposals/${encodeURIComponent(proposalId)}/ratify`, body);
 
+export const addProject = (body: { path: string; name?: string; decisionsDir?: string }) =>
+  postJson<{ id: string; name: string; path: string; decisionsDir: string }>("/api/projects", body);
+
+export const removeProject = (projectId: string) =>
+  postJson<{ name: string }>(`/api/projects/${encodeURIComponent(projectId)}/remove`, {});
+
 export const archiveTopic = (topicId: string) =>
   postJson<{ topicId: string; withdrewProposal: boolean }>(`/api/topics/${encodeURIComponent(topicId)}/archive`, {});
 

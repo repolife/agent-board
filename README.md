@@ -139,7 +139,7 @@ claude mcp add agent-board -- node /absolute/path/to/agent-board/bin/agent-board
 ```
 agent-board mcp                       MCP server over stdio
 agent-board ui [-p PORT] [-H HOST]    Dashboard (default 127.0.0.1:3000)
-agent-board project add <path> [--name N] [--dir D]
+agent-board project add <path> [--name N] [--dir D]   (or use the Projects page)
 agent-board project list | remove <name>
 ```
 
@@ -177,6 +177,26 @@ client can talk to it over stdin:
   }
 }
 ```
+
+### Decision files in Docker
+
+Ratifying writes into project folders, so the **dashboard** container needs those
+repos mounted (the MCP containers only use the database). Mount each repo at the same
+path it has on your machine, so the paths the dashboard shows are your real paths, then
+register it from the Projects page or with the CLI inside the container:
+
+```sh
+docker run -d --name agent-board -p 127.0.0.1:3000:3000 \
+  -v agent-board:/data \
+  -v ~/dev/my-app:$HOME/dev/my-app \
+  agent-board
+
+docker exec agent-board node bin/agent-board.js project add $HOME/dev/my-app
+```
+
+The container runs as the `node` user (uid 1000). If your user's uid differs (`id -u`),
+add `--user "$(id -u):$(id -g)"` so the decision files it writes are owned by you, and
+make sure that user can write to the `agent-board` volume.
 
 ## Development
 

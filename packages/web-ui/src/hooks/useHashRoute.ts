@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
 
-// #/topics/<topicId>, #/topics/<topicId>/posts/<postId>, or #/decisions
+// #/topics/<topicId>, #/topics/<topicId>/posts/<postId>, #/decisions, or #/projects
 const TOPIC_ROUTE = /^#\/topics\/([^/]+)(?:\/posts\/([^/]+))?$/;
 
 export type HashRoute =
-  { view: "home" } | { view: "decisions" } | { view: "thread"; topicId: string; postId: string | null };
+  | { view: "home" }
+  | { view: "decisions" }
+  | { view: "projects" }
+  | { view: "thread"; topicId: string; postId: string | null };
 
 function read(): HashRoute {
   const { hash } = window.location;
   if (hash === "#/decisions") return { view: "decisions" };
+  if (hash === "#/projects") return { view: "projects" };
   const match = TOPIC_ROUTE.exec(hash);
   if (!match) return { view: "home" };
   return {
@@ -19,6 +23,7 @@ function read(): HashRoute {
 }
 
 export const DECISIONS_HREF = "#/decisions";
+export const PROJECTS_HREF = "#/projects";
 
 export function topicHref(topicId: string, postId?: string) {
   const base = `#/topics/${encodeURIComponent(topicId)}`;

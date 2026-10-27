@@ -11,6 +11,7 @@ import {
   type RatifyResult,
   type Thread,
 } from "../api";
+import { PROJECTS_HREF } from "../hooks/useHashRoute";
 import { Button, DialogHeader, Modal, Warning } from "./ui";
 
 interface Props {
@@ -145,8 +146,11 @@ function RatifyForm({ titleId, state, thread, onClose, onDone }: FormProps & { t
       <div className="mt-4 space-y-4 text-sm">
         {projects?.length === 0 ? (
           <Warning>
-            No projects are registered. Add one in a terminal, then reopen this dialog:
-            <code className="mt-1 block">agent-board project add /path/to/your/repo</code>
+            No projects are registered.{" "}
+            <a href={PROJECTS_HREF} onClick={onClose} className="font-medium underline">
+              Add one on the Projects page
+            </a>
+            , then come back to ratify.
           </Warning>
         ) : (
           <label className="block">

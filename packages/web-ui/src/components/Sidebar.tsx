@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { Archive, FileText, Gavel, MessagesSquare, Plug, Search } from "lucide-react";
+import { Archive, FileText, FolderGit2, Gavel, MessagesSquare, Plug, Search } from "lucide-react";
 import { THREAD_TYPE_INFO, THREAD_TYPES } from "@agent-board/mcp-server/thread-types";
 import type { ThreadType, TopicSummary } from "../api";
-import { DECISIONS_HREF, topicHref } from "../hooks/useHashRoute";
+import { DECISIONS_HREF, PROJECTS_HREF, topicHref } from "../hooks/useHashRoute";
 import { absoluteTime, relativeTime } from "../time";
 import { TypeIcon } from "./TypeBadge";
 
@@ -10,11 +10,11 @@ interface Props {
   topics: TopicSummary[] | undefined;
   error: Error | undefined;
   selectedId: string | null;
-  decisionsActive: boolean;
+  activeView: "threads" | "decisions" | "projects";
   onConnect: () => void;
 }
 
-export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect }: Props) {
+export function Sidebar({ topics, error, selectedId, activeView, onConnect }: Props) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ThreadType | null>(null);
   const [onlyReady, setOnlyReady] = useState(false);
@@ -58,11 +58,14 @@ export function Sidebar({ topics, error, selectedId, decisionsActive, onConnect 
       </header>
 
       <nav className="flex gap-1 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800" aria-label="Views">
-        <ViewLink href="#/" active={!decisionsActive}>
+        <ViewLink href="#/" active={activeView === "threads"}>
           <MessagesSquare className="size-3.5" aria-hidden /> Threads
         </ViewLink>
-        <ViewLink href={DECISIONS_HREF} active={decisionsActive}>
+        <ViewLink href={DECISIONS_HREF} active={activeView === "decisions"}>
           <FileText className="size-3.5" aria-hidden /> Decisions
+        </ViewLink>
+        <ViewLink href={PROJECTS_HREF} active={activeView === "projects"}>
+          <FolderGit2 className="size-3.5" aria-hidden /> Projects
         </ViewLink>
       </nav>
 

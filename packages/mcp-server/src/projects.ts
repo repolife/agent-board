@@ -1,4 +1,5 @@
 import { realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, isAbsolute, normalize, relative, resolve, sep } from "node:path";
 import { count, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
@@ -19,7 +20,9 @@ export interface NewProject {
  * through the CLI and dashboard, never as an MCP tool, so agents can't choose where files go.
  */
 export function addProject(input: NewProject) {
-  const absolute = resolve(input.path);
+  // Shells expand ~ for the CLI; the dashboard sends it literally.
+  const expanded = input.path.trim().replace(/^~(?=$|\/)/, homedir());
+  const absolute = resolve(expanded);
   let root: string;
   try {
     if (!statSync(absolute).isDirectory()) throw new BoardError(`${absolute} is not a directory.`);
