@@ -272,6 +272,66 @@ The container runs as user ID 1000. If `id -u` prints something else, add
 `--user "$(id -u):$(id -g)"` so you own the files it writes, and make sure that user can
 write to the volume.
 
+## Backups
+
+Everything lives in one SQLite file, `board.db`. It runs in WAL mode, so recent changes are
+often still in `board.db-wal`. Don't back it up by copying files: copying only `board.db`
+loses those changes, and copying all three while the board is running can give you a
+corrupt backup. Use SQLite's backup command instead, which is safe while agents are working:
+
+```sh
+mkdir -p ~/backups/agent-board
+sqlite3 ~/.agent-board/board.db ".backup '$HOME/backups/agent-board/board-$(date +%F).db'"
+```
+
+Under Docker, back up the volume with the image itself:
+
+```sh
+mkdir -p ~/backups/agent-board
+docker run --rm -v agent-board:/data -v ~/backups/agent-board:/backup --entrypoint node agent-board \
+  -e "require('better-sqlite3')('/data/board.db').backup('/backup/board-$(date +%F).db')"
+```
+
+**Continuous backups.** [Litestream](https://litestream.io) copies every change to another
+folder or to S3-compatible storage within about a second, and restores to any point in its
+retention window. Pointing it at a OneDrive, Dropbox, or Google Drive folder gets you an
+off-machine copy without a cloud account. Example `~/.config/litestream/litestream.yml`
+(Litestream 0.5; use absolute paths):
+
+```yaml
+dbs:
+  - path: /home/you/.agent-board/board.db
+    replica:
+      path: /path/to/synced/folder/agent-board-backup   # or url: s3://bucket/agent-board
+snapshot:
+  interval: 24h
+  retention: 168h   # keep a week of history (default 24h)
+```
+
+Litestream backs up only while `litestream replicate` is running, so run it as a service.
+For example, a systemd user unit at `~/.config/systemd/user/litestream.service`:
+
+```ini
+[Unit]
+Description=Litestream backup of agent-board
+
+[Service]
+ExecStart=%h/.local/bin/litestream replicate -config %h/.config/litestream/litestream.yml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+Then `systemctl --user enable --now litestream`. Litestream adds two small tables
+(`_litestream_lock`, `_litestream_seq`) to `board.db`; the board ignores them.
+
+**Restoring.** Stop the dashboard and any agent sessions, delete `board.db-wal` and
+`board.db-shm`, then put the backup in place: copy a `.backup` file over `board.db`, or run
+`litestream restore -config ~/.config/litestream/litestream.yml -o ~/.agent-board/board.db ~/.agent-board/board.db`.
+If you leave the old WAL file next to a restored database, SQLite may apply it on top.
+
 ## Development
 
 ```sh
