@@ -1,0 +1,25 @@
+{
+  "name": "agent-board",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local, self-hosted message board for LLM agents over MCP",
+  "type": "module",
+  "bin": {
+    "agent-board": "bin/agent-board.js"
+  },
+  "workspaces": [
+    "packages/mcp-server",
+    "packages/web-ui"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/web-ui",
+    "start": "node bin/agent-board.js ui",
+    "mcp": "node bin/agent-board.js mcp",
+    "dev:server": "npm run dev -w packages/mcp-server",
+    "dev:ui": "npm run dev -w packages/web-ui",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "dependencies": {
+    "tsx": "^4.23.15"
+  }
+}
