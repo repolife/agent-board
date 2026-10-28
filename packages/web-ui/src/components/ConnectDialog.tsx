@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Copy, X } from "lucide-react";
 import { fetchSetup, type Setup } from "../api";
 
-type ClientId = "claude-code" | "claude-desktop" | "codex" | "gemini" | "other";
+type ClientId = "claude-code" | "claude-desktop" | "chatgpt" | "codex" | "gemini" | "other";
 
 const CLIENTS: { id: ClientId; label: string }[] = [
   { id: "claude-code", label: "Claude Code" },
   { id: "claude-desktop", label: "Claude Desktop" },
+  { id: "chatgpt", label: "ChatGPT Desktop" },
   { id: "codex", label: "Codex CLI" },
   { id: "gemini", label: "Gemini CLI" },
   { id: "other", label: "Other" },
@@ -21,6 +22,14 @@ function serverCommand(setup: Setup): string[] {
   return [setup.nodePath, setup.binPath, "mcp"];
 }
 
+/**
+ * The command for a Windows desktop app. A board running in WSL has to be started through wsl.exe;
+ * Docker needs no wrapper because Docker Desktop puts `docker` on the Windows PATH too.
+ */
+function desktopCommand(setup: Setup, command: string[]): string[] {
+  return setup.wslDistro && !setup.docker ? ["wsl.exe", "-d", setup.wslDistro, "--", ...command] : command;
+}
+
 function shellQuote(arg: string): string {
   return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", `'\\''`)}'`;
 }
@@ -28,6 +37,12 @@ function shellQuote(arg: string): string {
 function mcpJson(command: string[]): string {
   const [cmd, ...args] = command;
   return JSON.stringify({ mcpServers: { "agent-board": { command: cmd, args } } }, null, 2);
+}
+
+function codexToml(command: string[]): string {
+  const [cmd, ...args] = command;
+  // JSON strings are valid TOML basic strings.
+  return `[mcp_servers.agent-board]\ncommand = ${JSON.stringify(cmd)}\nargs = [${args.map((a) => JSON.stringify(a)).join(", ")}]`;
 }
 
 export function ConnectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -154,10 +169,7 @@ function ClientInstructions({ client, setup }: { client: ClientId; setup: Setup 
         </>
       );
 
-    case "claude-desktop": {
-      // Claude Desktop is a Windows app under WSL, so it has to reach into the distro to run Node.
-      const desktopCommand =
-        setup.wslDistro && !setup.docker ? ["wsl.exe", "-d", setup.wslDistro, "--", ...command] : command;
+    case "claude-desktop":
       return (
         <>
           <Instruction>
@@ -165,12 +177,48 @@ function ClientInstructions({ client, setup }: { client: ClientId; setup: Setup 
             <code>claude_desktop_config.json</code>. If the file already has an <code>mcpServers</code> section, add the{" "}
             <code>"agent-board"</code> entry inside it.
           </Instruction>
-          <CodeBlock code={mcpJson(desktopCommand)} />
+          <CodeBlock code={mcpJson(desktopCommand(setup, command))} />
           <Hint>
-            Then fully quit Claude Desktop (from the tray or menu bar, not just the window) and reopen it.
+            Then fully quit Claude Desktop (from the tray or menu bar, not just the window) and reopen it. Claude Code
+            sessions in the desktop app's Code tab read this config too
+            {setup.wslDistro && <>, except sessions running in WSL, which use the Claude Code command instead</>}.
             {setup.wslDistro && !setup.docker && (
               <> This board runs in WSL ({setup.wslDistro}), so the config starts it through <code>wsl.exe</code>.</>
             )}
+          </Hint>
+        </>
+      );
+
+    case "chatgpt": {
+      const appCommand = desktopCommand(setup, command);
+      return (
+        <>
+          <Instruction>
+            In the ChatGPT desktop app open <strong>Settings → MCP servers → Add server</strong>, choose{" "}
+            <strong>STDIO</strong>, name it <code>agent-board</code>, and enter this command:
+          </Instruction>
+          <CodeBlock code={appCommand.map(shellQuote).join(" ")} />
+          <Hint>
+            Save, then select <strong>Restart</strong>. Or add this to the app's <code>config.toml</code>
+            {setup.wslDistro ? (
+              <>
+                {" "}
+                in <code>%USERPROFILE%\.codex</code>
+              </>
+            ) : (
+              <>
+                {" "}
+                in <code>~/.codex</code> (<code>%USERPROFILE%\.codex</code> on Windows), which Codex CLI shares
+              </>
+            )}
+            :
+          </Hint>
+          <div className="mt-2">
+            <CodeBlock code={codexToml(appCommand)} />
+          </div>
+          <Hint>
+            Type <code>/mcp</code> in the composer to confirm it's connected. Only the desktop app can start local
+            servers; ChatGPT on the web can't.
           </Hint>
         </>
       );

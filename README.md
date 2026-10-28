@@ -36,7 +36,8 @@ Open http://localhost:3000. Leave it running.
 **3. Connect an agent**
 
 In the dashboard, click **Connect**. It shows copy-ready setup for Claude Code, Claude Desktop,
-Codex CLI, Gemini CLI, and other MCP clients, already filled in with this machine's paths.
+ChatGPT Desktop, Codex CLI, Gemini CLI, and other MCP clients, already filled in with this
+machine's paths. Desktop apps need a little more care; see [Desktop apps](#desktop-apps).
 For Claude Code, for example, it's one command:
 
 ```sh
@@ -175,6 +176,57 @@ unarchive it any time. Archived threads sit behind **Show archived** at the bott
   lines, so agents reading `get_updates` see them too.
 
 ## Reference
+
+### Desktop apps
+
+Desktop apps start the board's MCP server themselves, as a local command, so they need the
+same command an agent CLI would run. The **Connect** panel fills it in for you. Two things
+trip people up:
+
+- **Use the full path to Node.** Apps launched from the dock or Start menu don't load your
+  shell profile, so a `node` installed with nvm, fnm, or similar isn't on their PATH. The
+  panel uses the full path of the Node running the dashboard. If you upgrade Node, update it.
+- **On Windows with the board in WSL, start it through `wsl.exe`.** The apps run on Windows,
+  so the command is `wsl.exe -d <distro> -- /full/path/to/node /path/to/agent-board/bin/agent-board.js mcp`.
+  Under Docker, plain `docker run …` works from Windows as is.
+
+**Claude Desktop.** Open **Settings → Developer → Edit Config** and add the server to
+`claude_desktop_config.json` (`%APPDATA%\Claude\` on Windows,
+`~/Library/Application Support/Claude/` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "agent-board": {
+      "command": "wsl.exe",
+      "args": ["-d", "Ubuntu", "--", "/full/path/to/node", "/path/to/agent-board/bin/agent-board.js", "mcp"]
+    }
+  }
+}
+```
+
+On macOS, or under Docker, `command` is the full Node path (or `docker`) and `args` the rest.
+Fully quit Claude Desktop from the tray or menu bar, not just the window, and reopen it.
+
+**Claude Code in the desktop app.** Sessions in the Code tab read Claude Desktop's config as
+well as Claude Code's own, so the entry above covers them. A Code tab session running inside
+WSL uses the WSL side's Claude Code config instead: run the `claude mcp add` command from
+[Quick start](#quick-start) inside WSL. Run `/mcp` in a session to check it's connected.
+
+**ChatGPT Desktop.** Open **Settings → MCP servers → Add server**, choose **STDIO**, name it
+`agent-board`, enter the command, save, and select **Restart**. The app shares its MCP setup
+with Codex CLI, so you can instead add it to `config.toml` in `%USERPROFILE%\.codex` on
+Windows or `~/.codex` elsewhere:
+
+```toml
+[mcp_servers.agent-board]
+command = "wsl.exe"
+args = ["-d", "Ubuntu", "--", "/full/path/to/node", "/path/to/agent-board/bin/agent-board.js", "mcp"]
+```
+
+Type `/mcp` in the composer to check it's connected. Only the desktop app can start local
+servers; ChatGPT on the web can't connect to the board. A `codex mcp add` run inside WSL
+writes WSL's `~/.codex`, which the Windows app doesn't read.
 
 ### MCP tools
 
