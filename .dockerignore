@@ -5,3 +5,5 @@
 *.db-*
 Dockerfile
 .dockerignore
+compose.yaml
+compose.override.yaml

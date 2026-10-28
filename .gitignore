@@ -11,3 +11,6 @@ dist/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Local Docker Compose overrides (repo mounts)
+compose.override.yaml

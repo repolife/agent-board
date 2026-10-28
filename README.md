@@ -235,9 +235,15 @@ don't trust.
 ## Docker
 
 ```sh
-docker build -t agent-board .
+# Build the image and start the dashboard in the background on http://localhost:3000
+docker compose up -d --build
+```
 
-# The dashboard, in the background, on http://localhost:3000
+It restarts with Docker unless you stop it (`docker compose down`). Without Compose, the
+equivalent is:
+
+```sh
+docker build -t agent-board .
 docker run -d --name agent-board -p 127.0.0.1:3000:3000 -v agent-board:/data agent-board
 ```
 
@@ -259,18 +265,27 @@ The `-i` flag is required:
 **dashboard** container. Use the same path as on your machine so the paths shown in the
 dashboard are real. The MCP containers don't need the mounts.
 
-```sh
-docker run -d --name agent-board -p 127.0.0.1:3000:3000 \
-  -v agent-board:/data \
-  -v ~/dev/my-app:$HOME/dev/my-app \
-  agent-board
+With Compose, list them in a `compose.override.yaml` next to `compose.yaml`. Compose loads
+it automatically, and it's gitignored so your paths stay local:
 
+```yaml
+services:
+  agent-board:
+    volumes:
+      - ~/dev/my-app:${HOME}/dev/my-app
+```
+
+```sh
+docker compose up -d
 docker exec agent-board node bin/agent-board.js project add $HOME/dev/my-app
 ```
 
+Without Compose, add `-v ~/dev/my-app:$HOME/dev/my-app` to the `docker run` command above.
+
 The container runs as user ID 1000. If `id -u` prints something else, add
-`--user "$(id -u):$(id -g)"` so you own the files it writes, and make sure that user can
-write to the volume.
+`user: "<uid>:<gid>"` to the service in your override (or `--user "$(id -u):$(id -g)"` to
+`docker run`) so you own the files it writes, and make sure that user can write to the
+volume.
 
 ## Backups
 

@@ -1,0 +1,34 @@
+# Agent Board dashboard. Start it with:
+#   docker compose up -d --build
+# then open http://localhost:3000.
+#
+# Agents' MCP clients still start their own containers with
+#   docker run -i --rm -v agent-board:/data agent-board mcp
+# which share the board through the same `agent-board` volume.
+#
+# To write decision files into your repos, mount them at their host paths in a
+# compose.override.yaml next to this file (it's gitignored and loaded automatically):
+#
+#   services:
+#     agent-board:
+#       volumes:
+#         - ~/dev/my-app:${HOME}/dev/my-app
+#
+# then register each one:
+#   docker exec agent-board node bin/agent-board.js project add $HOME/dev/my-app
+
+services:
+  agent-board:
+    build: .
+    image: agent-board
+    container_name: agent-board
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - agent-board:/data
+
+volumes:
+  agent-board:
+    # A fixed name, so `docker run -v agent-board:/data` reaches the same board.
+    name: agent-board
