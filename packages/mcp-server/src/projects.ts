@@ -1,13 +1,17 @@
-import { realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { count, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { BoardError, resolveProject } from "./board.js";
 import { db } from "./db.js";
-import { decisions, projects, topics } from "./schema.js";
+import { addEvent } from "./proposals.js";
+import { decisions, projects, topics, type Project } from "./schema.js";
 
 export const DEFAULT_DECISIONS_DIR = "docs/decisions";
+
+// Folders a repo may already keep decision records in, checked in order when a project is auto-registered.
+const KNOWN_DECISIONS_DIRS = ["docs/decisions", "docs/adr", "docs/adrs", "doc/adr", "docs/architecture/decisions", "adr"];
 
 export interface NewProject {
   path: string;
@@ -16,8 +20,8 @@ export interface NewProject {
 }
 
 /**
- * Registers a folder that ratified decisions may be written into. Operator-only: it's exposed
- * through the CLI and dashboard, never as an MCP tool, so agents can't choose where files go.
+ * Registers a folder that ratified decisions may be written into. Exposed through the CLI and
+ * dashboard. Agents can only trigger it indirectly, for a git repo they work in (projectForRepoPath).
  */
 export function addProject(input: NewProject) {
   // Shells expand ~ for the CLI; the dashboard sends it literally.
@@ -44,6 +48,124 @@ export function addProject(input: NewProject) {
   const project = { id: uuid(), name, path: root, decisionsDir, createdAt: new Date() };
   db.insert(projects).values(project).run();
   return project;
+}
+
+export interface RepoProject {
+  /** The project the path belongs to, if any. */
+  project?: Project;
+  /** True when this call registered it. */
+  registered: boolean;
+  /** Why the path couldn't be used, for the agent. The post still goes through without a project. */
+  warning?: string;
+}
+
+/**
+ * The project for an agent's working directory: the registered project containing it, or else its
+ * git repo, registered on the spot. Never throws for a bad path, so a thread is never lost over it.
+ * Set AGENT_BOARD_AUTO_PROJECTS=0 to only match projects the operator registered.
+ */
+export function projectForRepoPath(repoPath: string): RepoProject {
+  const expanded = repoPath.trim().replace(/^~(?=$|\/)/, homedir());
+  if (!isAbsolute(expanded)) {
+    return { registered: false, warning: `repo_path must be an absolute path, got "${repoPath}".` };
+  }
+  let real: string;
+  try {
+    real = realpathSync(expanded);
+  } catch {
+    // Under Docker the MCP container can't see the host's repos, but the operator registered
+    // them at their host paths, so compare the path as written.
+    const registered = projectContaining(resolve(expanded));
+    if (registered) return { project: registered, registered: false };
+    const docker = process.env.AGENT_BOARD_DOCKER === "1";
+    return {
+      registered: false,
+      warning:
+        `The board can't see ${expanded}, so the thread isn't filed under a project.` +
+        (docker
+          ? " The board runs in Docker; the operator mounts the repo and registers it with `agent-board project add`."
+          : ""),
+    };
+  }
+
+  const containing = projectContaining(real);
+  if (containing) return { project: containing, registered: false };
+
+  if (process.env.AGENT_BOARD_AUTO_PROJECTS === "0") {
+    return {
+      registered: false,
+      warning: `${real} isn't a registered project. The operator can add it with \`agent-board project add ${real}\`.`,
+    };
+  }
+  const root = gitRoot(real);
+  if (!root) {
+    return {
+      registered: false,
+      warning: `${real} isn't inside a git repository, so it wasn't registered as a project.`,
+    };
+  }
+
+  try {
+    const project = addProject({ path: root, name: freeName(basename(root)), decisionsDir: detectDecisionsDir(root) });
+    return { project, registered: true };
+  } catch (err) {
+    // Another agent registered the same repo a moment ago.
+    const existing = db.select().from(projects).where(eq(projects.path, root)).get();
+    if (existing) return { project: existing, registered: false };
+    if (err instanceof BoardError) return { registered: false, warning: err.message };
+    throw err;
+  }
+}
+
+/** Notes an automatic registration in the thread, so the operator sees where its decisions will go. */
+export function noteProjectRegistered(topicId: string, project: Project, by: { company: string; model: string }) {
+  db.transaction((tx) =>
+    addEvent(
+      tx,
+      topicId,
+      `**Project registered:** ${project.name}, from the repo ${by.company} | ${by.model} is working in. ` +
+        `Decisions from this thread will be filed in \`${project.path}/${project.decisionsDir}\` once the operator ratifies them.`,
+      new Date(),
+    ),
+  );
+}
+
+/** The registered project whose folder holds `path`, preferring the most specific one. */
+function projectContaining(path: string): Project | undefined {
+  return db
+    .select()
+    .from(projects)
+    .all()
+    .filter((p) => path === p.path || path.startsWith(p.path.endsWith(sep) ? p.path : p.path + sep))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+}
+
+/** The nearest folder at or above `path` with a .git entry (a directory, or a file in worktrees). */
+function gitRoot(path: string): string | undefined {
+  for (let dir = path; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    if (dirname(dir) === dir) return undefined;
+  }
+}
+
+function detectDecisionsDir(root: string): string {
+  return (
+    KNOWN_DECISIONS_DIRS.find((dir) => {
+      try {
+        return statSync(join(root, dir)).isDirectory();
+      } catch {
+        return false;
+      }
+    }) ?? DEFAULT_DECISIONS_DIR
+  );
+}
+
+/** The folder's name, or name-2, name-3… if another project already uses it. */
+function freeName(base: string): string {
+  const taken = (name: string) => !!db.select({ id: projects.id }).from(projects).where(eq(projects.name, name)).get();
+  let name = base;
+  for (let n = 2; taken(name); n++) name = `${base}-${n}`;
+  return name;
 }
 
 /** Normalizes the decisions folder and refuses anything that would land outside the project. */

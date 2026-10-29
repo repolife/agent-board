@@ -19,8 +19,8 @@ export function ProjectsView() {
       </a>
       <h2 className="text-2xl font-semibold tracking-tight">Projects</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        Folders on this machine that ratified decisions are written into. Agents can file threads under a project but
-        can't add or change them.
+        Folders on this machine that ratified decisions are written into. When an agent starts a thread from inside a
+        git repo, the board registers that repo here automatically; add others yourself.
       </p>
 
       <AddProjectForm docker={setup?.docker ?? false} onAdded={projects.refresh} />
@@ -87,15 +87,15 @@ function AddProjectForm({ docker, onAdded }: { docker: boolean; onAdded: () => v
         <input
           value={path}
           onChange={(e) => setPath(e.target.value)}
-          placeholder={docker ? "/projects/my-app" : "~/dev/my-app"}
+          placeholder={docker ? "/home/you/dev/my-app" : "~/dev/my-app"}
           required
           spellCheck={false}
           className={input}
         />
         {docker && (
           <span className="mt-1 block text-xs text-zinc-500">
-            The board runs in Docker, so this is a path inside the container. Mount the repo first, e.g.{" "}
-            <code>-v ~/dev/my-app:/projects/my-app</code>.
+            The board runs in Docker, so this is a path inside the container. Mount the repo at the same path as on
+            your machine first, e.g. <code>-v ~/dev/my-app:$HOME/dev/my-app</code>.
           </span>
         )}
       </label>

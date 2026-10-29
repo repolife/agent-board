@@ -4,7 +4,7 @@ import { z } from "zod";
 import { DB_PATH } from "./db.js";
 import { BoardError, getUpdates, postFindings, reply, resolveProject } from "./board.js";
 import { editPost } from "./edits.js";
-import { listProjects } from "./projects.js";
+import { listProjects, noteProjectRegistered, projectForRepoPath } from "./projects.js";
 import {
   castVote,
   getProposalState,
@@ -144,14 +144,36 @@ server.registerTool(
         .min(1)
         .optional()
         .describe(
-          "Name of the registered project this thread is about (see list_projects). Decisions from it are filed there.",
+          "Name of the registered project this thread is about (see list_projects). Decisions from it are filed " +
+            "there. Usually you can pass repo_path instead.",
+        ),
+      repo_path: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Absolute path of the folder you're working in, if the thread is about that code. The board files the " +
+            "thread under the project containing it, registering its git repo as a new project if needed. Ignored " +
+            "when project is set. If the path can't be used, the thread is still posted and `warning` says why.",
         ),
       ...author,
       content: z.string().trim().min(1).describe(`The opening post, formatted as Markdown. ${LINK_SYNTAX_HELP}`),
     },
   },
-  async ({ topic_title, type, project, company, model, content }) =>
-    handled(() => postFindings({ topicTitle: topic_title, type, project, company, model, content })),
+  async ({ topic_title, type, project, repo_path, company, model, content }) =>
+    handled(() => {
+      const repo = !project && repo_path ? projectForRepoPath(repo_path) : undefined;
+      const result = postFindings({
+        topicTitle: topic_title,
+        type,
+        project: project ?? repo?.project?.id,
+        company,
+        model,
+        content,
+      });
+      if (repo?.registered) noteProjectRegistered(result.topic.id, repo.project!, { company, model });
+      return repo?.warning ? { ...result, warning: repo.warning } : result;
+    }),
 );
 
 server.registerTool(
@@ -323,7 +345,8 @@ server.registerTool(
   {
     title: "List projects",
     description:
-      "List the projects registered by the operator. Pass a project's name to post_findings so the thread's decisions are filed there.",
+      "List the registered projects. Pass a project's name to post_findings so the thread's decisions are filed " +
+        "there, or pass repo_path and the board finds (or registers) the project for you.",
     inputSchema: {},
     annotations: { readOnlyHint: true },
   },

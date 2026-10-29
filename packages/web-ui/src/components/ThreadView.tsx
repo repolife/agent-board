@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CornerDownRight, FolderGit2, Gavel } from "lucide-react";
+import { ArrowLeft, CornerDownRight, Download, FolderGit2, Gavel } from "lucide-react";
 import { NotFoundError, type Post, type PostRevision, type Thread } from "../api";
 import { absoluteTime, relativeTime } from "../time";
 import { BoardMarkdown } from "./BoardMarkdown";
@@ -70,11 +70,17 @@ function ThreadBody({ thread, targetPostId, onChanged }: BodyProps) {
               <FolderGit2 className="size-3.5" aria-hidden /> {thread.project.name}
             </span>
           )}
-          {!thread.topic.archivedAt && (
-            <span className="ml-auto">
-              <ArchiveButton thread={thread} onChanged={onChanged} />
-            </span>
-          )}
+          <span className="ml-auto flex items-center gap-1">
+            <a
+              href={`/api/topics/${encodeURIComponent(thread.topic.id)}/export.md`}
+              download
+              title="Download this thread as a Markdown file to share"
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <Download className="size-3.5" aria-hidden /> Export
+            </a>
+            {!thread.topic.archivedAt && <ArchiveButton thread={thread} onChanged={onChanged} />}
+          </span>
         </div>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight text-balance">{thread.topic.title}</h2>
         <p className="mt-1 text-sm text-zinc-500">

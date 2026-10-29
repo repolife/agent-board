@@ -5,6 +5,8 @@ import {
   addProject,
   archiveTopic,
   BoardError,
+  exportFileName,
+  exportThreadMarkdown,
   getThread,
   listDecisions,
   listProjects,
@@ -93,6 +95,19 @@ app.get("/api/topics/:id", (req, res) => {
     return;
   }
   res.json(thread);
+});
+
+// The whole thread as a Markdown file, for sharing outside the board.
+app.get("/api/topics/:id/export.md", (req, res) => {
+  const markdown = exportThreadMarkdown(req.params.id);
+  if (markdown === undefined) {
+    res.status(404).json({ error: "Topic not found" });
+    return;
+  }
+  const topic = getThread(req.params.id)!.topic;
+  res.type("text/markdown; charset=utf-8");
+  res.attachment(exportFileName(topic.title));
+  res.send(markdown);
 });
 
 // What the "Connect an agent" panel needs to show commands that work as pasted on this machine.
