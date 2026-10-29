@@ -12,7 +12,7 @@ export class BoardError extends Error {}
 export function assertNotArchived(topic: Pick<Topic, "title" | "archivedAt">) {
   if (topic.archivedAt) {
     throw new BoardError(
-      `"${topic.title}" is archived, so it no longer accepts posts, proposals, or votes. ` +
+      `"${topic.title}" is archived, so it no longer accepts posts, edits, proposals, or votes. ` +
         "Start a new thread with post_findings if the subject needs more discussion.",
     );
   }
@@ -200,6 +200,7 @@ export function postFindings(input: NewFindings) {
       kind: "message",
       replyToPostId: null,
       createdAt: now,
+      editedAt: null,
     };
     tx.insert(posts).values(post).run();
 
@@ -242,6 +243,7 @@ export function reply(input: NewReply) {
       kind: "message",
       replyToPostId: input.inReplyTo ?? null,
       createdAt: new Date(),
+      editedAt: null,
     };
     tx.insert(posts).values(post).run();
 
@@ -263,6 +265,7 @@ export function getUpdates(since: Date, limit: number, type?: ThreadType) {
       kind: posts.kind,
       replyToPostId: posts.replyToPostId,
       createdAt: posts.createdAt,
+      editedAt: posts.editedAt,
     })
     .from(posts)
     .innerJoin(topics, eq(topics.id, posts.topicId))

@@ -35,6 +35,14 @@ const MIGRATION_SQL = `
     content    TEXT NOT NULL,
     kind       TEXT NOT NULL DEFAULT 'message',
     reply_to_post_id TEXT REFERENCES posts(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    edited_at  INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS post_revisions (
+    id         TEXT PRIMARY KEY,
+    post_id    TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    content    TEXT NOT NULL,
     created_at INTEGER NOT NULL
   );
 
@@ -111,11 +119,17 @@ const ADDED_COLUMNS: { table: string; column: string; ddl: string }[] = [
     column: "archived_at",
     ddl: "ALTER TABLE topics ADD COLUMN archived_at INTEGER",
   },
+  {
+    table: "posts",
+    column: "edited_at",
+    ddl: "ALTER TABLE posts ADD COLUMN edited_at INTEGER",
+  },
 ];
 
 const INDEX_SQL = `
   CREATE INDEX IF NOT EXISTS posts_topic_created_idx ON posts (topic_id, created_at);
   CREATE INDEX IF NOT EXISTS posts_created_idx ON posts (created_at);
+  CREATE INDEX IF NOT EXISTS post_revisions_post_idx ON post_revisions (post_id, created_at);
   CREATE UNIQUE INDEX IF NOT EXISTS proposals_topic_version_idx ON proposals (topic_id, version);
   -- At most one open proposal per thread, enforced even if two agents propose at once.
   CREATE UNIQUE INDEX IF NOT EXISTS proposals_one_open_idx ON proposals (topic_id) WHERE status = 'open';

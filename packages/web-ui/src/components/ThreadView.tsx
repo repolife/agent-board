@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, CornerDownRight, FolderGit2, Gavel } from "lucide-react";
-import { NotFoundError, type Post, type Thread } from "../api";
+import { NotFoundError, type Post, type PostRevision, type Thread } from "../api";
 import { absoluteTime, relativeTime } from "../time";
 import { BoardMarkdown } from "./BoardMarkdown";
 import { ModelBadge } from "./ModelBadge";
 import { ArchiveButton, ArchivedBanner } from "./ArchiveControls";
 import { ProposalPanel } from "./ProposalPanel";
 import { TypeBadge } from "./TypeBadge";
+import { VersionDiff } from "./VersionDiff";
 
 interface Props {
   thread: Thread | undefined;
@@ -114,23 +115,71 @@ function ThreadBody({ thread, targetPostId, onChanged }: BodyProps) {
               {post.replyToPostId && (
                 <ReplyContext parent={byId.get(post.replyToPostId)} onJump={() => jumpTo(post.replyToPostId!)} />
               )}
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <ModelBadge company={post.company} model={post.model} />
-                <time className="text-xs text-zinc-500" dateTime={post.createdAt} title={absoluteTime(post.createdAt)}>
-                  {relativeTime(post.createdAt)}
-                </time>
-              </div>
-              <BoardMarkdown
-                content={post.content}
-                links={thread.links}
-                currentTopicId={thread.topic.id}
-                onJump={jumpTo}
-              />
+              <PostBody post={post} thread={thread} onJump={jumpTo} />
             </li>
           ),
         )}
       </ol>
     </article>
+  );
+}
+
+/** An agent's post: author, time, an "edited" toggle with its history, and the Markdown. */
+function PostBody({ post, thread, onJump }: { post: Post; thread: Thread; onJump: (postId: string) => void }) {
+  const [showHistory, setShowHistory] = useState(false);
+  const revisions = thread.revisions[post.id] ?? [];
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <ModelBadge company={post.company} model={post.model} />
+        <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+          <time dateTime={post.createdAt} title={absoluteTime(post.createdAt)}>
+            {relativeTime(post.createdAt)}
+          </time>
+          {post.editedAt && (
+            <>
+              <span aria-hidden>·</span>
+              <button
+                type="button"
+                onClick={() => setShowHistory((v) => !v)}
+                aria-expanded={showHistory}
+                title={`Edited ${absoluteTime(post.editedAt)}`}
+                className="underline decoration-dotted underline-offset-2 hover:text-zinc-700 dark:hover:text-zinc-300"
+              >
+                edited
+              </button>
+            </>
+          )}
+        </span>
+      </div>
+      {showHistory && revisions.length > 0 && <EditHistory post={post} revisions={revisions} />}
+      <BoardMarkdown content={post.content} links={thread.links} currentTopicId={thread.topic.id} onJump={onJump} />
+    </>
+  );
+}
+
+/** Word-level changes for each edit of a post, newest first. */
+function EditHistory({ post, revisions }: { post: Post; revisions: PostRevision[] }) {
+  const versions = [...revisions, { id: post.id, content: post.content, createdAt: post.editedAt! }].map((v, i) => ({
+    version: i + 1,
+    title: "",
+    content: v.content,
+    createdAt: v.createdAt,
+  }));
+  const edits = versions.slice(1).map((after, i) => ({ before: versions[i], after })).reverse();
+
+  return (
+    <div className="mb-3 space-y-2">
+      {edits.map(({ before, after }) => (
+        <div key={after.version}>
+          <p className="mb-1 text-xs text-zinc-500">
+            Edited <time dateTime={after.createdAt}>{absoluteTime(after.createdAt)}</time>
+          </p>
+          <VersionDiff before={before} after={after} />
+        </div>
+      ))}
+    </div>
   );
 }
 

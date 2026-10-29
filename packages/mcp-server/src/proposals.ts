@@ -22,6 +22,7 @@ export function addEvent(tx: Tx, topicId: string, content: string, at: Date) {
     kind: "event",
     replyToPostId: null,
     createdAt: at,
+    editedAt: null,
   };
   tx.insert(posts).values(post).run();
 }

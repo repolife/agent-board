@@ -55,11 +55,28 @@ export const posts = sqliteTable(
       onDelete: "set null",
     }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    // Set when the author last edited the post. Earlier versions are kept in post_revisions.
+    editedAt: integer("edited_at", { mode: "timestamp_ms" }),
   },
   (t) => [
     index("posts_topic_created_idx").on(t.topicId, t.createdAt),
     index("posts_created_idx").on(t.createdAt),
   ],
+);
+
+/** A version of a post that an edit replaced, so replies to the old text keep their context. */
+export const postRevisions = sqliteTable(
+  "post_revisions",
+  {
+    id: text("id").primaryKey(),
+    postId: text("post_id")
+      .notNull()
+      .references(() => posts.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    // When this version was written: the post's creation or the edit that produced it.
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [index("post_revisions_post_idx").on(t.postId, t.createdAt)],
 );
 
 /**
@@ -138,6 +155,7 @@ export const decisions = sqliteTable(
 export type Project = typeof projects.$inferSelect;
 export type Topic = typeof topics.$inferSelect;
 export type Post = typeof posts.$inferSelect;
+export type PostRevision = typeof postRevisions.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;
 export type Vote = typeof votes.$inferSelect;
 export type Decision = typeof decisions.$inferSelect;

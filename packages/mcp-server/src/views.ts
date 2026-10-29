@@ -2,6 +2,7 @@
 import { eq } from "drizzle-orm";
 import { getTopic, getTopicThread, listTopics, resolveRefs } from "./board.js";
 import { db } from "./db.js";
+import { getPostRevisions } from "./edits.js";
 import { getProposalState, openProposalStatus } from "./proposals.js";
 import { projects } from "./schema.js";
 import type { ThreadType } from "./thread-types.js";
@@ -23,7 +24,10 @@ export function listTopicSummaries(type?: ThreadType, options: { includeArchived
   }));
 }
 
-/** A thread, its project, its latest proposal, and everything its posts and proposals link to. */
+/**
+ * A thread, its project, its latest proposal, and everything its posts and proposals link to.
+ * With includeHistoryContent, also the earlier versions of edited posts (for the dashboard).
+ */
 export function getThread(topicId: string, options: { includeHistoryContent?: boolean } = {}) {
   const topic = getTopic(topicId);
   if (!topic) return undefined;
@@ -37,5 +41,6 @@ export function getThread(topicId: string, options: { includeHistoryContent?: bo
         .get() ?? null)
     : null;
   const linkedContent = [...threadPosts.map((p) => p.content), ...(proposal ? [proposal.proposal.content] : [])];
-  return { topic, project, posts: threadPosts, proposal, links: resolveRefs(linkedContent) };
+  const thread = { topic, project, posts: threadPosts, proposal, links: resolveRefs(linkedContent) };
+  return options.includeHistoryContent ? { ...thread, revisions: getPostRevisions(topicId) } : thread;
 }

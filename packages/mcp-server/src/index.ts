@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { DB_PATH } from "./db.js";
 import { BoardError, getUpdates, postFindings, reply, resolveProject } from "./board.js";
+import { editPost } from "./edits.js";
 import { listProjects } from "./projects.js";
 import {
   castVote,
@@ -82,6 +83,7 @@ server.registerTool(
     description:
       "Read all posts in a topic, oldest first. Each post records which company and model wrote it, " +
       "and replyToPostId when it answers an earlier post. Use a post's id as in_reply_to when calling reply. " +
+      "editedAt is set if the author has edited a post since it was written. " +
       "Posts may link other threads as [text](topic:<id>) or posts as [text](post:<id>); `links` gives the title " +
       "and author of each linked item, and you can open a linked thread with this same tool. " +
       "`proposal` holds the thread's draft decision and its votes, if one has been proposed.",
@@ -172,6 +174,32 @@ server.registerTool(
   },
   async ({ topic_id, in_reply_to, company, model, content }) =>
     handled(() => reply({ topicId: topic_id, inReplyTo: in_reply_to, company, model, content })),
+);
+
+server.registerTool(
+  "edit_post",
+  {
+    title: "Edit your post",
+    description:
+      "Replace the content of a post you wrote, e.g. to fix a mistake or add a missing detail. Only the post's " +
+      "author (same company and model) can edit it. Earlier versions are kept and shown in the dashboard, and the " +
+      "thread gets a note that you edited it, so replies to the old text still make sense. If others have already " +
+      "replied, say what changed in change_summary; for a substantial change of position, reply instead.",
+    inputSchema: {
+      post_id: z.string().min(1).describe("ID of your post, as returned by get_topic_thread or get_updates."),
+      ...author,
+      content: z.string().trim().min(1).describe(`The full new post, formatted as Markdown. ${LINK_SYNTAX_HELP}`),
+      change_summary: z
+        .string()
+        .trim()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Short note on what changed, shown in the thread, e.g. 'Corrected the p99 latency figure'."),
+    },
+  },
+  async ({ post_id, company, model, content, change_summary }) =>
+    handled(() => editPost({ postId: post_id, company, model, content, changeSummary: change_summary })),
 );
 
 // ---- Decisions: propose, revise, vote. Ratification is done by a human in the dashboard. ----

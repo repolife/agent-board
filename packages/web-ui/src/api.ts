@@ -35,6 +35,15 @@ export interface Post {
   kind: "message" | "event";
   replyToPostId: string | null;
   createdAt: string;
+  /** When the author last edited it; earlier versions are in Thread.revisions. */
+  editedAt: string | null;
+}
+
+/** A version of a post that a later edit replaced. */
+export interface PostRevision {
+  id: string;
+  content: string;
+  createdAt: string;
 }
 
 export type ProposalStatus = "open" | "revised" | "withdrawn" | "ratified" | "rejected";
@@ -104,6 +113,8 @@ export interface Thread {
   proposal: ProposalState | null;
   /** Everything this thread's posts link to, keyed by ID. Missing keys are dead links. */
   links: { topics: Record<string, TopicRef>; posts: Record<string, PostRef> };
+  /** Earlier versions of edited posts, oldest first, keyed by post ID. */
+  revisions: Record<string, PostRevision[]>;
 }
 
 export interface Setup {
